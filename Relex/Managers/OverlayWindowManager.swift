@@ -142,6 +142,13 @@ class OverlayWindowManager: ObservableObject {
                     return nil // Consume the event
                 }
 
+                // For any other keystroke while overlay is visible, refresh completion
+                Task { @MainActor in
+                    if manager.viewModel.isVisible && !manager.viewModel.isLoading {
+                        manager.viewModel.scheduleCompletionRefresh()
+                    }
+                }
+
                 return Unmanaged.passRetained(event)
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()

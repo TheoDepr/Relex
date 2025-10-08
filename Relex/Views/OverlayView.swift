@@ -13,6 +13,9 @@ class OverlayViewModel: ObservableObject {
     private let completionService: CompletionService
     weak var windowManager: OverlayWindowManager?
 
+    private var refreshTask: Task<Void, Never>?
+    private var debounceTask: Task<Void, Never>?
+
     init(accessibilityManager: AccessibilityManager, completionService: CompletionService) {
         self.accessibilityManager = accessibilityManager
         self.completionService = completionService
@@ -30,6 +33,29 @@ class OverlayViewModel: ObservableObject {
         isLoading = false
         completion = nil
         error = nil
+
+        // Cancel any pending refresh tasks
+        debounceTask?.cancel()
+        refreshTask?.cancel()
+    }
+
+    func scheduleCompletionRefresh() {
+        // Cancel existing debounce task
+        debounceTask?.cancel()
+
+        // Create new debounce task that waits 500ms before refreshing
+        debounceTask = Task {
+            do {
+                try await Task.sleep(nanoseconds: 500_000_000) // 500ms debounce
+
+                guard !Task.isCancelled else { return }
+
+                print("🔄 Refreshing completion due to keystroke")
+                await requestCompletion()
+            } catch {
+                // Task was cancelled, ignore
+            }
+        }
     }
 
     func requestCompletion() async {
