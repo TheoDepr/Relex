@@ -124,6 +124,27 @@ class OverlayWindowManager: ObservableObject {
 
                 print("🎹 Event tap - keyCode: \(keyCode), flags: \(flags)")
 
+                // Check for number keys 1, 2, 3 (keyCodes 18, 19, 20) to select options
+                if keyCode == 18 { // Key "1"
+                    print("1️⃣ Number 1 pressed - selecting option 1")
+                    Task { @MainActor in
+                        manager.viewModel.selectOption(0)
+                    }
+                    return nil // Consume the event
+                } else if keyCode == 19 { // Key "2"
+                    print("2️⃣ Number 2 pressed - selecting option 2")
+                    Task { @MainActor in
+                        manager.viewModel.selectOption(1)
+                    }
+                    return nil // Consume the event
+                } else if keyCode == 20 { // Key "3"
+                    print("3️⃣ Number 3 pressed - selecting option 3")
+                    Task { @MainActor in
+                        manager.viewModel.selectOption(2)
+                    }
+                    return nil // Consume the event
+                }
+
                 // Check for Option + [ (keyCode 33)
                 if flags.contains(.maskAlternate) && keyCode == 33 {
                     print("⌥[ pressed - accepting completion and consuming event")

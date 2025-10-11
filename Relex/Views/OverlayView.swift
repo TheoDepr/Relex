@@ -5,7 +5,8 @@ import Combine
 class OverlayViewModel: ObservableObject {
     @Published var isVisible = false
     @Published var isLoading = false
-    @Published var completion: String?
+    @Published var completions: [String] = []
+    @Published var selectedIndex: Int = 0
     @Published var error: String?
     @Published var cursorPosition: CGPoint?
 
@@ -24,19 +25,27 @@ class OverlayViewModel: ObservableObject {
     func show() {
         isVisible = true
         error = nil
-        completion = nil
+        completions = []
+        selectedIndex = 0
         cursorPosition = accessibilityManager.getCursorPosition()
     }
 
     func hide() {
         isVisible = false
         isLoading = false
-        completion = nil
+        completions = []
+        selectedIndex = 0
         error = nil
 
         // Cancel any pending refresh tasks
         debounceTask?.cancel()
         refreshTask?.cancel()
+    }
+
+    func selectOption(_ index: Int) {
+        guard index >= 0 && index < completions.count else { return }
+        selectedIndex = index
+        print("📍 Selected option \(index + 1): \"\(completions[index])\"")
     }
 
     func scheduleCompletionRefresh() {
@@ -61,7 +70,8 @@ class OverlayViewModel: ObservableObject {
     func requestCompletion() async {
         isLoading = true
         error = nil
-        completion = nil
+        completions = []
+        selectedIndex = 0
 
         // Check API key first
         guard !completionService.apiKey.isEmpty else {
@@ -83,11 +93,15 @@ class OverlayViewModel: ObservableObject {
         print("Context length: \(context.count) characters")
         print("Context: \"\(context)\"")
 
-        // Request completion
+        // Request completions
         do {
-            let result = try await completionService.generateCompletion(context: context)
-            print("✅ Received completion: \"\(result)\"")
-            completion = result
+            let results = try await completionService.generateCompletions(context: context)
+            print("✅ Received \(results.count) completions")
+            for (index, result) in results.enumerated() {
+                print("   \(index + 1). \"\(result)\"")
+            }
+            completions = results
+            selectedIndex = 0 // Default to first option
         } catch {
             print("❌ Completion error: \(error.localizedDescription)")
             // Make API authentication errors more user-friendly
@@ -102,19 +116,20 @@ class OverlayViewModel: ObservableObject {
     }
 
     func acceptCompletion() async {
-        guard let completion = completion else {
-            print("❌ No completion to accept")
+        guard !completions.isEmpty else {
+            print("❌ No completions to accept")
             return
         }
 
-        print("✍️ Hiding overlay first, then inserting completion: \"\(completion)\"")
+        let selectedCompletion = completions[selectedIndex]
+        print("✍️ Hiding overlay first, then inserting completion \(selectedIndex + 1): \"\(selectedCompletion)\"")
         hide()
         windowManager?.hideOverlay()
 
         // Small delay to ensure overlay is fully hidden and focus returns to the field
         try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
 
-        let success = await accessibilityManager.insertText(completion)
+        let success = await accessibilityManager.insertText(selectedCompletion)
         print("✍️ Insert result: \(success)")
 
         if !success {
@@ -158,46 +173,105 @@ struct OverlayView: View {
             }
 
             // Completion state
-            else if let completion = viewModel.completion {
-                VStack(alignment: .leading, spacing: 10) {
-                    // Main suggestion box
-                    Text(completion)
-                        .font(.body)
-                        .foregroundColor(.primary)
-                        .padding(12)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(Color(nsColor: .textBackgroundColor))
-                                .shadow(radius: 1, y: 1)
+            else if !viewModel.completions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    // Show 3 completion options
+                    ForEach(0..<viewModel.completions.count, id: \.self) { index in
+                        CompletionOptionRow(
+                            number: index + 1,
+                            text: viewModel.completions[index],
+                            isSelected: index == viewModel.selectedIndex
                         )
+                    }
 
                     // Key hint row
-                    HStack(spacing: 20) {
-                        Label("Option+[ to accept", systemImage: "checkmark.circle")
-                            .foregroundStyle(.green)
-                        Label("Escape to cancel", systemImage: "xmark.circle")
-                            .foregroundStyle(.red)
+                    HStack(spacing: 16) {
+                        Label("1, 2, 3 to select", systemImage: "number.circle")
+                            .foregroundStyle(.gray)
+                        Label("⌥[ to accept", systemImage: "checkmark.circle")
+                            .foregroundStyle(.blue)
+                        Label("⎋ to cancel", systemImage: "xmark.circle")
+                            .foregroundStyle(.purple)
                     }
                     .font(.caption)
                     .padding(.horizontal, 4)
+                    .padding(.top, 4)
                 }
             }
         }
         .frame(minWidth: 400, maxWidth: 500, minHeight: 60)
         .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 14)
-                .fill(Color(nsColor: .windowBackgroundColor).opacity(0.92))
-                .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.accentColor.opacity(0.35), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 10)
+                .fill(Color.black.opacity(0.85))
+                .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
         )
         .fixedSize(horizontal: false, vertical: true)
         .animation(.easeInOut(duration: 0.2), value: viewModel.isLoading)
+    }
+}
+
+struct CompletionOptionRow: View {
+    let number: Int
+    let text: String
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 12) {
+            // Number badge with gradient
+            Text("\(number)")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 24, height: 24)
+                .background(
+                    Circle()
+                        .fill(
+                            isSelected
+                                ? LinearGradient(
+                                    colors: [.blue, .purple],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                                : LinearGradient(
+                                    colors: [.gray.opacity(0.5), .gray.opacity(0.5)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                        )
+                )
+
+            // Completion text
+            Text(text)
+                .font(.body)
+                .foregroundColor(isSelected ? .white : .gray)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(
+                            isSelected
+                                ? LinearGradient(
+                                    colors: [.blue, .purple],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                : LinearGradient(
+                                    colors: [.clear, .clear],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                ),
+                            lineWidth: 2
+                        )
+                )
+        )
+        .contentShape(Rectangle())
     }
 }
 
@@ -215,7 +289,7 @@ struct OverlayView: View {
         .frame(width: 500, height: 200)
 }
 
-#Preview("With Completion") {
+#Preview("With Completions") {
     let accessibilityManager = AccessibilityManager()
     let completionService = CompletionService()
     let viewModel = OverlayViewModel(
@@ -223,10 +297,15 @@ struct OverlayView: View {
         completionService: completionService
     )
     viewModel.isVisible = true
-    viewModel.completion = "and then I realized that the key to success is consistency and dedication to your craft."
+    viewModel.completions = [
+        "and then I realized that the key to success is consistency.",
+        "and subsequently discovered the importance of perseverance.",
+        "and finally understood that dedication leads to mastery."
+    ]
+    viewModel.selectedIndex = 0
 
     return OverlayView(viewModel: viewModel)
-        .frame(width: 500, height: 200)
+        .frame(width: 500, height: 250)
 }
 
 #Preview("Error State") {

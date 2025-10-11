@@ -52,6 +52,17 @@ class VoiceOverlayViewModel: ObservableObject {
         if recordingFileURL == nil {
             error = audioRecordingManager.lastError ?? "Failed to start recording"
             state = .error
+
+            // Auto-hide after showing error briefly
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                await MainActor.run {
+                    if state == .error {
+                        hide()
+                        windowManager?.hideOverlay()
+                    }
+                }
+            }
         }
     }
 
@@ -67,6 +78,17 @@ class VoiceOverlayViewModel: ObservableObject {
         guard let audioURL = audioRecordingManager.stopRecording() else {
             error = "Failed to stop recording"
             state = .error
+
+            // Auto-hide after showing error briefly
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                await MainActor.run {
+                    if state == .error {
+                        hide()
+                        windowManager?.hideOverlay()
+                    }
+                }
+            }
             return
         }
 
@@ -92,6 +114,17 @@ class VoiceOverlayViewModel: ObservableObject {
             } else {
                 error = "Failed to insert transcribed text"
                 state = .error
+
+                // Auto-hide after showing error briefly
+                Task {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                    await MainActor.run {
+                        if state == .error {
+                            hide()
+                            windowManager?.hideOverlay()
+                        }
+                    }
+                }
             }
 
             // Cleanup audio file
@@ -104,6 +137,17 @@ class VoiceOverlayViewModel: ObservableObject {
 
             // Cleanup audio file
             audioRecordingManager.cleanupRecording(at: audioURL)
+
+            // Auto-hide after showing error briefly
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                await MainActor.run {
+                    if state == .error {
+                        hide()
+                        windowManager?.hideOverlay()
+                    }
+                }
+            }
         }
     }
 
