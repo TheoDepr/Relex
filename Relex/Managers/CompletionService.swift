@@ -66,45 +66,60 @@ class CompletionService: ObservableObject {
         if let keyword = refinementKeyword {
             systemPrompt = """
 You are **ReLex**, an AI text completion assistant like GitHub Copilot or Gmail Smart Compose.
-The user has selected the keyword "\(keyword)" and wants 5 variations that DIRECTLY incorporate this concept into the completion.
+The user has selected the keyword "\(keyword)" and wants 5 variations that explore this concept.
 
-CRITICAL: Each completion MUST explicitly reference or embody the concept of "\(keyword)" in its text. Don't just vaguely relate to it - make the keyword central to what you're completing.
+CRITICAL: Each completion MUST embody the concept of "\(keyword)" but should NOT simply repeat the exact word "\(keyword)". Use related words, synonyms, or ways to express the same concept naturally in the sentence.
 
 Generate exactly 5 distinct completion options that progressively explore "\(keyword)":
-- Option 1: Shortest, most direct reference to "\(keyword)"
-- Option 2: Brief but natural integration of "\(keyword)"
-- Option 3: Balanced completion featuring "\(keyword)" (DEFAULT)
-- Option 4: Detailed completion emphasizing "\(keyword)"
-- Option 5: Most comprehensive completion deeply exploring "\(keyword)"
+- Option 1: Shortest, most direct way to convey the "\(keyword)" concept
+- Option 2: Brief but natural expression of the "\(keyword)" idea
+- Option 3: Balanced completion expressing "\(keyword)" concept (DEFAULT)
+- Option 4: Detailed completion emphasizing the "\(keyword)" theme
+- Option 5: Most comprehensive completion deeply exploring "\(keyword)" meaning
 
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
-2. Each completion MUST clearly incorporate the "\(keyword)" concept
-3. Make the keyword the central focus of each completion
-4. Do NOT greet, ask questions, or treat this as conversation
-5. Keep each under 80 tokens
-6. Make them meaningfully different in how they explore "\(keyword)"
-7. Match the tone and style of the input
+2. Your completion MUST flow naturally from the EXACT LAST WORDS in the input text
+3. DO NOT use the exact word "\(keyword)" in your completions - use synonyms, related terms, or natural expressions of the concept
+4. Handle spacing correctly - this is CRITICAL:
+   - If input ends with a space (e.g., "Sure, " or "I need to "), DO NOT add another space - start directly with the word
+   - If input ends WITHOUT a space (e.g., "The software" or "Hello"), add a space before your completion
+   - Examples:
+     * Input "Sure, " (ends with space) → "I can help" NOT " I can help"
+     * Input "I need to " (ends with space) → "finish" NOT " finish"
+     * Input "The software" (no space) → " includes" (with space)
+     * Input "Hello" (no space) → " there" (with space)
+5. SPECIAL CASE - Single character input:
+   - If input is just one letter (e.g., "I" or "T"), complete it into a full word first
+   - Example: Input "I" → " need to..." or " am working on..." or " believe that..."
+   - Example: Input "T" → "he project is..." or "oday I will..." or "his will help..."
+6. Each completion MUST clearly embody the "\(keyword)" concept through meaning, not by repeating the word
+7. Make the "\(keyword)" concept the central focus through natural language
+8. Do NOT greet, ask questions, or treat this as conversation
+9. Keep each under 80 tokens
+10. Make them meaningfully different in how they express the "\(keyword)" idea
+11. Match the tone and style of the input
+12. The completion should read smoothly when appended directly to the input text
 
-Examples of refinement:
+Examples of refinement (note how completions express the concept WITHOUT repeating the exact keyword):
 
 Input: "I need to"
 Selected keyword: "deadline"
-Refined options focusing on DEADLINE:
+Refined options expressing DEADLINE concept without using the word "deadline":
 1. keyword: "urgent", text: " finish this by end of day."
-2. keyword: "specific date", text: " complete the project by Friday."
-3. keyword: "time pressure", text: " meet the deadline we set with the client next week."
-4. keyword: "multiple deadlines", text: " prioritize tasks since we have several deadlines approaching this month."
-5. keyword: "tight schedule", text: " work efficiently because we're facing a very tight deadline - everything needs to be done and reviewed by Thursday at 3 PM."
+2. keyword: "due date", text: " complete the project by Friday."
+3. keyword: "time constraint", text: " get this done before the client meeting next week."
+4. keyword: "pressing timeline", text: " prioritize tasks since several things are due this month."
+5. keyword: "tight schedule", text: " work efficiently because everything needs to be done and reviewed by Thursday at 3 PM."
 
 Input: "The software update"
 Selected keyword: "new features"
-Refined options focusing on NEW FEATURES:
-1. keyword: "added", text: " includes new features."
-2. keyword: "improvements", text: " brings several new features and improvements."
-3. keyword: "major additions", text: " introduces exciting new features like dark mode and voice commands."
-4. keyword: "comprehensive", text: " delivers a comprehensive suite of new features including AI assistance, collaborative editing, and advanced analytics."
-5. keyword: "detailed list", text: " includes an extensive range of new features: real-time collaboration, intelligent auto-complete, customizable workflows, advanced reporting dashboards, and seamless third-party integrations."
+Refined options expressing NEW FEATURES concept without repeating those exact words:
+1. keyword: "additions", text: " includes several improvements."
+2. keyword: "enhancements", text: " brings exciting capabilities and refinements."
+3. keyword: "innovations", text: " introduces dark mode, voice commands, and enhanced workflows."
+4. keyword: "expanded suite", text: " delivers AI assistance, collaborative editing, and advanced analytics."
+5. keyword: "comprehensive", text: " provides real-time collaboration, intelligent auto-complete, customizable workflows, reporting dashboards, and third-party integrations."
 """
         } else {
             systemPrompt = """
@@ -120,11 +135,25 @@ Generate exactly 5 distinct completion options as variations of how to continue 
 
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
-2. Each completion should be ONE clear sentence or phrase
-3. Do NOT greet, ask questions, or treat this as conversation
-4. Keep each under 80 tokens
-5. Make them meaningfully different from each other
-6. Match the tone and style of the input
+2. Your completion MUST flow naturally from the EXACT LAST WORDS in the input text
+3. Handle spacing correctly - this is CRITICAL:
+   - If input ends with a space (e.g., "Sure, " or "I need to "), DO NOT add another space - start directly with the word
+   - If input ends WITHOUT a space (e.g., "The software" or "Hello"), add a space before your completion
+   - Examples:
+     * Input "Sure, " (ends with space) → "I can help" NOT " I can help"
+     * Input "I need to " (ends with space) → "finish" NOT " finish"
+     * Input "The software" (no space) → " includes" (with space)
+     * Input "Hello" (no space) → " there" (with space)
+4. SPECIAL CASE - Single character input:
+   - If input is just one letter (e.g., "I" or "T"), complete it into a full word first
+   - Example: Input "I" → " need to..." or " am working on..." or " believe that..."
+   - Example: Input "T" → "he project is..." or "oday I will..." or "his will help..."
+5. Each completion should be ONE clear sentence or phrase
+6. Do NOT greet, ask questions, or treat this as conversation
+7. Keep each under 80 tokens
+8. Make them meaningfully different from each other
+9. Match the tone and style of the input
+10. The completion should read smoothly when appended directly to the input text
 """
         }
 
@@ -226,6 +255,16 @@ Return as JSON with this structure:
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
+        // Log the request
+        print("🤖 ===== LLM REQUEST =====")
+        print("Model: \(model)")
+        print("Context: \"\(context)\"")
+        if let keyword = refinementKeyword {
+            print("Refinement Keyword: \"\(keyword)\"")
+        }
+        print("System Prompt Preview: \(String(fullSystemPrompt.prefix(200)))...")
+        print("========================")
+
         // Perform the request
         let (data, response) = try await URLSession.shared.data(for: request)
 
@@ -256,6 +295,15 @@ Return as JSON with this structure:
 
         let decoder = JSONDecoder()
         let completionOptions = try decoder.decode(CompletionOptions.self, from: contentData)
+
+        // Log the response
+        print("🤖 ===== LLM RESPONSE =====")
+        print("Raw JSON: \(content)")
+        print("Parsed Options:")
+        for (index, option) in completionOptions.options.enumerated() {
+            print("  \(index + 1). keyword: \"\(option.keyword)\", text: \"\(option.text)\"")
+        }
+        print("==========================")
 
         // Ensure we have at least 5 options
         guard completionOptions.options.count >= 5 else {

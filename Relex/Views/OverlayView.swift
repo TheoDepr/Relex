@@ -226,24 +226,18 @@ class OverlayViewModel: ObservableObject {
         selectedIndexHistory.append(selectedIndex)
         keywordPath.append(selectedOption.keyword)
 
-        // Get the original context (if we're at root) or the last stored context
-        let baseContext: String
-        if contextHistory.isEmpty {
-            // First drill-down - capture current text from field
-            guard let currentContext = await accessibilityManager.captureTextFromFocusedElement() else {
-                print("❌ Failed to capture context for drill-down")
-                // Restore state
-                _ = completionHistory.popLast()
-                _ = selectedIndexHistory.popLast()
-                _ = keywordPath.popLast()
-                return
-            }
-            baseContext = currentContext
-        } else {
-            baseContext = contextHistory.last!
+        // ALWAYS capture fresh context from the text field
+        guard let currentContext = await accessibilityManager.captureTextFromFocusedElement() else {
+            print("❌ Failed to capture context for drill-down")
+            // Restore state
+            _ = completionHistory.popLast()
+            _ = selectedIndexHistory.popLast()
+            _ = keywordPath.popLast()
+            return
         }
 
-        contextHistory.append(baseContext)
+        print("📝 Using fresh context for drill-down: \"\(currentContext)\"")
+        contextHistory.append(currentContext)
 
         // Generate refined completions (keep existing completions visible during load)
         isLoading = true
@@ -252,7 +246,7 @@ class OverlayViewModel: ObservableObject {
 
         do {
             let results = try await completionService.generateCompletions(
-                context: baseContext,
+                context: currentContext,
                 refinementKeyword: selectedOption.keyword
             )
             print("✅ Received \(results.count) refined completions for '\(selectedOption.keyword)'")
@@ -424,12 +418,12 @@ struct CompletionOptionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Keyword (fixed width, no truncation)
+            // Keyword (flexible width with max constraint to keep dots aligned)
             Text(option.keyword)
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundColor(isSelected ? Color(red: 0.6, green: 0.8, blue: 1.0) : Color.gray.opacity(0.7))
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(width: 140, alignment: .trailing)
+                .frame(width: 160, alignment: .trailing)
 
             // Dot indicator with gradient
             Circle()
@@ -448,7 +442,7 @@ struct CompletionOptionRow: View {
                 )
                 .frame(width: 10, height: 10)
 
-            // Completion text
+            // Completion text (takes remaining space, truncates if needed)
             Text(option.text)
                 .font(.body)
                 .foregroundColor(isSelected ? .white : .gray)
@@ -461,23 +455,6 @@ struct CompletionOptionRow: View {
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(
-                            isSelected
-                                ? LinearGradient(
-                                    colors: [.blue, .purple],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                                : LinearGradient(
-                                    colors: [.clear, .clear],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                ),
-                            lineWidth: 2
-                        )
-                )
         )
         .contentShape(Rectangle())
     }
