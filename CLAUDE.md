@@ -49,12 +49,13 @@ The app follows an MVVM architecture with a central coordinator pattern:
   - Detects cursor position
 - **CompletionService**: OpenAI API integration for text completions
   - Uses gpt-4o-mini model with structured JSON output
-  - Returns 3 completion options with keywords and text
+  - Returns 5 completion options with keywords and text (short to expansive)
+  - Supports refinement mode for drill-down keyword exploration
   - Handles API key storage via UserDefaults
 - **OverlayWindowManager**: Manages floating completion overlay window (NSPanel)
   - Creates borderless, non-activating panel positioned near cursor
-  - Sets up CGEventTap to intercept overlay-specific hotkeys (Option+J/K/L, Escape)
-  - Auto-refreshes completions on keystroke with 500ms debounce
+  - Sets up CGEventTap to intercept overlay-specific hotkeys (Option+J/K/L/H, Shift+Option+L, Escape)
+  - Auto-refreshes completions on keystroke with 500ms debounce (only at root level)
 - **AudioRecordingManager**: Handles audio recording for voice dictation
   - Manages microphone permissions
   - Records audio to temporary WAV files
@@ -65,16 +66,20 @@ The app follows an MVVM architecture with a central coordinator pattern:
 - **OverlayViewModel**: State management for text completion overlay
   - Triggers completion requests
   - Handles selection navigation (Option+J/K)
-  - Accepts/cancels completions (Option+L/Escape)
-  - Implements debounced refresh on keystroke changes
+  - Manages drill-down refinement with history stack
+  - Accepts/cancels completions (Shift+Option+L/Escape)
+  - Implements debounced refresh on keystroke changes (root level only)
+  - Tracks keyword path and depth for breadcrumb navigation
 - **VoiceOverlayViewModel**: State management for voice recording overlay
 
 **Views**:
 - **ContentView**: Main settings window with permission management and API key configuration
 - **OverlayView**: SwiftUI view for completion overlay with loading/error/results states
-  - Shows 3 completion options with keywords
-  - Visual indication of selected option
-  - Keyboard hint row
+  - Shows 5 completion options with keywords (always fully visible, no truncation)
+  - Breadcrumb header showing keyword path and depth level
+  - Visual indication of selected option with gradient styling
+  - Loading overlay that keeps completions visible during refinement
+  - Keyboard hint row (adaptive based on depth)
 - **VoiceOverlayView**: SwiftUI view for voice recording overlay
 
 ### Key Technical Details
@@ -93,7 +98,9 @@ The app follows an MVVM architecture with a central coordinator pattern:
 - Positioned below cursor with screen boundary clamping
 - Non-activating panel (doesn't steal focus)
 - Floating window level (appears over other windows)
-- Automatic refresh on keystrokes while visible (debounced)
+- Automatic refresh on keystrokes while visible (debounced, root level only)
+- Maintains full size during drill-down with loading overlay
+- Supports unlimited depth drill-down navigation with history stack
 
 **Permissions Required**:
 - Accessibility Access: Required for AXUIElement APIs, CGEventTap, and text insertion
@@ -112,19 +119,34 @@ The app follows an MVVM architecture with a central coordinator pattern:
 ### OpenAI Integration
 
 CompletionService system prompt instructs the model to:
-- Return exactly 3 distinct completion options
+- Return exactly 5 distinct completion options (short to expansive gradient)
 - Each option has a keyword (1-3 words) and completion text
+- Option 3 (middle) is the default balanced approach
 - Never repeat input context, only provide continuation
 - Keep completions under 80 tokens each
 - Match tone/style of input
 - Uses structured JSON output via `response_format` with strict schema validation
 
+**Refinement Mode**: When drilling down with a selected keyword, the system prompt changes to:
+- Focus all 5 options on exploring different aspects of the selected keyword
+- Maintains short-to-expansive gradient within the keyword theme
+- Enables iterative exploration of completion concepts
+
 ### Hotkey Mappings
 
-Text Completion Overlay:
-- **Option+J**: Toggle overlay / Scroll down in overlay
-- **Option+K**: Scroll up in overlay
-- **Option+L**: Accept selected completion
+Text Completion Overlay (Root Level):
+- **Option+J**: Toggle overlay / Scroll down through options
+- **Option+K**: Scroll up through options
+- **Option+L**: Drill down into selected keyword (refine)
+- **Shift+Option+L**: Accept and insert selected completion
+- **Escape**: Cancel and hide overlay
+
+Text Completion Overlay (Drill-Down Mode):
+- **Option+J**: Scroll down through refined options
+- **Option+K**: Scroll up through refined options
+- **Option+L**: Drill deeper into selected keyword (unlimited depth)
+- **Option+H**: Navigate back one level in history
+- **Shift+Option+L**: Accept and insert selected completion
 - **Escape**: Cancel and hide overlay
 
 Voice Dictation:
@@ -139,3 +161,6 @@ Voice Dictation:
 - Web browsers don't fully support AX text insertion, always use typing simulation
 - Overlay uses non-activating panel to avoid stealing focus from target application
 - Unicode typing simulation works more reliably than key code mapping for special characters
+- Keystroke refresh is disabled during drill-down mode to preserve history state
+- Keywords are displayed with full width (no truncation) for better readability
+- Loading overlay maintains completions visibility during refinement to avoid jarring UX

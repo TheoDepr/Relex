@@ -160,11 +160,38 @@ class OverlayWindowManager: ObservableObject {
                     return nil // Consume the event
                 }
 
-                // Check for Option + L (keyCode 37) to accept
-                if flags.contains(.maskAlternate) && keyCode == 37 {
-                    print("⌥L pressed - accepting completion and consuming event")
+                // Check for Option + H (keyCode 4) to go back
+                if flags.contains(.maskAlternate) && keyCode == 4 {
+                    print("⌥H pressed - navigating back")
+                    Task { @MainActor in
+                        manager.viewModel.navigateBack()
+                    }
+                    return nil // Consume the event
+                }
+
+                // Check for Option + F (keyCode 3) to accept and insert
+                if flags.contains(.maskAlternate) && keyCode == 3 {
+                    print("⌥F pressed - accepting and inserting completion")
                     Task { @MainActor in
                         await manager.viewModel.acceptCompletion()
+                    }
+                    return nil // Consume the event
+                }
+
+                // Check for Shift + Option + L (keyCode 37) to accept and insert
+                if flags.contains(.maskAlternate) && flags.contains(.maskShift) && keyCode == 37 {
+                    print("⇧⌥L pressed - accepting and inserting completion")
+                    Task { @MainActor in
+                        await manager.viewModel.acceptCompletion()
+                    }
+                    return nil // Consume the event
+                }
+
+                // Check for Option + L (keyCode 37) to drill down
+                if flags.contains(.maskAlternate) && keyCode == 37 {
+                    print("⌥L pressed - drilling down into keyword")
+                    Task { @MainActor in
+                        await manager.viewModel.drillDownIntoKeyword()
                     }
                     return nil // Consume the event
                 }
@@ -179,6 +206,7 @@ class OverlayWindowManager: ObservableObject {
                 }
 
                 // For any other keystroke while overlay is visible, refresh completion
+                // Works at all depth levels - uses keyword context when drilling down
                 Task { @MainActor in
                     if manager.viewModel.isVisible && !manager.viewModel.isLoading {
                         manager.viewModel.scheduleCompletionRefresh()

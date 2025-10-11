@@ -10,6 +10,16 @@ class OverlayViewModel: ObservableObject {
     @Published var error: String?
     @Published var cursorPosition: CGPoint?
 
+    // History stack for drill-down navigation
+    @Published var completionHistory: [[CompletionOption]] = []
+    @Published var contextHistory: [String] = []
+    @Published var selectedIndexHistory: [Int] = []
+    @Published var keywordPath: [String] = []  // Breadcrumb trail of keywords
+
+    var currentDepth: Int {
+        return completionHistory.count
+    }
+
     private let accessibilityManager: AccessibilityManager
     private let completionService: CompletionService
     weak var windowManager: OverlayWindowManager?
@@ -28,6 +38,12 @@ class OverlayViewModel: ObservableObject {
         completions = []
         selectedIndex = 2  // Default to middle option (index 2 of 5 options)
         cursorPosition = accessibilityManager.getCursorPosition()
+
+        // Clear history when showing fresh overlay
+        completionHistory = []
+        contextHistory = []
+        selectedIndexHistory = []
+        keywordPath = []
     }
 
     func hide() {
@@ -36,6 +52,12 @@ class OverlayViewModel: ObservableObject {
         completions = []
         selectedIndex = 2  // Reset to middle option
         error = nil
+
+        // Clear history
+        completionHistory = []
+        contextHistory = []
+        selectedIndexHistory = []
+        keywordPath = []
 
         // Cancel any pending refresh tasks
         debounceTask?.cancel()
@@ -59,12 +81,57 @@ class OverlayViewModel: ObservableObject {
 
                 guard !Task.isCancelled else { return }
 
-                print("🔄 Refreshing completion due to keystroke")
-                await requestCompletion()
+                print("🔄 Refreshing completion due to keystroke at depth \(currentDepth)")
+
+                if currentDepth > 0 {
+                    // At drill-down level - regenerate with keyword context
+                    await requestCompletionWithKeywordPath()
+                } else {
+                    // At root level - normal completion
+                    await requestCompletion()
+                }
             } catch {
                 // Task was cancelled, ignore
             }
         }
+    }
+
+    func requestCompletionWithKeywordPath() async {
+        guard !keywordPath.isEmpty else {
+            await requestCompletion()
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        // Get fresh context from text field
+        guard let currentContext = await accessibilityManager.captureTextFromFocusedElement() else {
+            error = accessibilityManager.lastError ?? "Failed to capture text"
+            print("❌ Failed to capture context for keyword refresh")
+            isLoading = false
+            return
+        }
+
+        print("🔄 Refreshing with keyword path: \(keywordPath.joined(separator: " > "))")
+
+        // Use the last keyword in the path for refinement
+        let lastKeyword = keywordPath.last!
+
+        do {
+            let results = try await completionService.generateCompletions(
+                context: currentContext,
+                refinementKeyword: lastKeyword
+            )
+            print("✅ Received \(results.count) refreshed completions for '\(lastKeyword)'")
+            completions = results
+            selectedIndex = 2
+        } catch {
+            print("❌ Refresh error: \(error.localizedDescription)")
+            self.error = error.localizedDescription
+        }
+
+        isLoading = false
     }
 
     func requestCompletion() async {
@@ -142,6 +209,85 @@ class OverlayViewModel: ObservableObject {
         hide()
         windowManager?.hideOverlay()
     }
+
+    // MARK: - Drill-Down Navigation
+
+    func drillDownIntoKeyword() async {
+        guard !completions.isEmpty else {
+            print("❌ No completions to drill down into")
+            return
+        }
+
+        let selectedOption = completions[selectedIndex]
+        print("🔍 Drilling down into keyword: \"\(selectedOption.keyword)\"")
+
+        // Save current state to history
+        completionHistory.append(completions)
+        selectedIndexHistory.append(selectedIndex)
+        keywordPath.append(selectedOption.keyword)
+
+        // Get the original context (if we're at root) or the last stored context
+        let baseContext: String
+        if contextHistory.isEmpty {
+            // First drill-down - capture current text from field
+            guard let currentContext = await accessibilityManager.captureTextFromFocusedElement() else {
+                print("❌ Failed to capture context for drill-down")
+                // Restore state
+                _ = completionHistory.popLast()
+                _ = selectedIndexHistory.popLast()
+                _ = keywordPath.popLast()
+                return
+            }
+            baseContext = currentContext
+        } else {
+            baseContext = contextHistory.last!
+        }
+
+        contextHistory.append(baseContext)
+
+        // Generate refined completions (keep existing completions visible during load)
+        isLoading = true
+        error = nil
+        // Don't clear completions here - keep them visible during loading
+
+        do {
+            let results = try await completionService.generateCompletions(
+                context: baseContext,
+                refinementKeyword: selectedOption.keyword
+            )
+            print("✅ Received \(results.count) refined completions for '\(selectedOption.keyword)'")
+            completions = results
+            selectedIndex = 2
+        } catch {
+            print("❌ Drill-down error: \(error.localizedDescription)")
+            self.error = error.localizedDescription
+
+            // Restore state on error
+            _ = completionHistory.popLast()
+            _ = contextHistory.popLast()
+            _ = selectedIndexHistory.popLast()
+            _ = keywordPath.popLast()
+        }
+
+        isLoading = false
+    }
+
+    func navigateBack() {
+        guard !completionHistory.isEmpty else {
+            print("⚠️ Already at root level, cannot go back")
+            return
+        }
+
+        print("⬅️ Navigating back from depth \(currentDepth)")
+
+        // Restore previous state
+        completions = completionHistory.popLast() ?? []
+        selectedIndex = selectedIndexHistory.popLast() ?? 2
+        _ = contextHistory.popLast()
+        _ = keywordPath.popLast()
+
+        print("✅ Restored to depth \(currentDepth)")
+    }
 }
 
 struct OverlayView: View {
@@ -149,14 +295,41 @@ struct OverlayView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            // Loading state
-            if viewModel.isLoading {
-                PulsingDotsView()
-                    .frame(width: 200, height: 30)
+            // Breadcrumb header (show when depth > 0)
+            if viewModel.currentDepth > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.turn.down.right")
+                        .font(.system(size: 10))
+                        .foregroundColor(.blue.opacity(0.7))
+
+                    HStack(spacing: 4) {
+                        ForEach(Array(viewModel.keywordPath.enumerated()), id: \.offset) { index, keyword in
+                            if index > 0 {
+                                Text(">")
+                                    .font(.caption2)
+                                    .foregroundColor(.gray.opacity(0.5))
+                            }
+                            Text(keyword)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.blue.opacity(0.8))
+                        }
+                    }
+
+                    Spacer()
+
+                    Text("Level \(viewModel.currentDepth)")
+                        .font(.caption2)
+                        .foregroundColor(.gray.opacity(0.6))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(Color.blue.opacity(0.05))
+                .cornerRadius(6)
             }
 
             // Error state
-            else if let error = viewModel.error {
+            if let error = viewModel.error {
                 HStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundColor(.orange)
@@ -167,36 +340,72 @@ struct OverlayView: View {
                 }
             }
 
-            // Completion state
-            else if !viewModel.completions.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Show 5 completion options
-                    ForEach(0..<viewModel.completions.count, id: \.self) { index in
-                        CompletionOptionRow(
-                            number: index + 1,
-                            option: viewModel.completions[index],
-                            isSelected: index == viewModel.selectedIndex
-                        )
+            // Completion state (or loading without completions)
+            else if !viewModel.completions.isEmpty || viewModel.isLoading {
+                ZStack {
+                    // Show completions if available
+                    if !viewModel.completions.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            // Show 5 completion options
+                            ForEach(0..<viewModel.completions.count, id: \.self) { index in
+                                CompletionOptionRow(
+                                    number: index + 1,
+                                    option: viewModel.completions[index],
+                                    isSelected: index == viewModel.selectedIndex,
+                                    depth: viewModel.currentDepth
+                                )
+                            }
+
+                            // Key hint row
+                            HStack(spacing: 16) {
+                                Label("⌥J/⌥K to navigate", systemImage: "arrow.up.arrow.down.circle")
+                                    .foregroundStyle(.gray)
+                                Label("⌥L to refine", systemImage: "arrow.down.circle")
+                                    .foregroundStyle(.blue)
+                                Label("⇧⌥L to accept", systemImage: "checkmark.circle")
+                                    .foregroundStyle(.green)
+                                if viewModel.currentDepth > 0 {
+                                    Label("⌥H to back", systemImage: "arrow.left.circle")
+                                        .foregroundStyle(.orange)
+                                }
+                                Label("⎋ to cancel", systemImage: "xmark.circle")
+                                    .foregroundStyle(.purple)
+                            }
+                            .font(.caption)
+                            .padding(.horizontal, 4)
+                            .padding(.top, 4)
+                        }
+                        .opacity(viewModel.isLoading ? 0.5 : 1.0)
+                    } else {
+                        // Show loading dots when no completions yet (initial load)
+                        PulsingDotsView()
+                            .frame(width: 200, height: 30)
                     }
 
-                    // Key hint row
-                    HStack(spacing: 16) {
-                        Label("⌥J/⌥K to navigate", systemImage: "arrow.up.arrow.down.circle")
-                            .foregroundStyle(.gray)
-                        Label("⌥L to accept", systemImage: "checkmark.circle")
-                            .foregroundStyle(.blue)
-                        Label("⎋ to cancel", systemImage: "xmark.circle")
-                            .foregroundStyle(.purple)
+                    // Loading overlay indicator
+                    if viewModel.isLoading && !viewModel.completions.isEmpty {
+                        VStack {
+                            Spacer()
+                            HStack {
+                                Spacer()
+                                PulsingDotsView()
+                                    .frame(width: 60, height: 20)
+                                    .padding(8)
+                                    .background(Color.black.opacity(0.7))
+                                    .cornerRadius(8)
+                                Spacer()
+                            }
+                            Spacer()
+                        }
                     }
-                    .font(.caption)
-                    .padding(.horizontal, 4)
-                    .padding(.top, 4)
                 }
             }
         }
-        .frame(minWidth: viewModel.isLoading ? 200 : 550, maxWidth: viewModel.isLoading ? 200 : 650, minHeight: viewModel.isLoading ? 30 : 60)
-        .padding(.horizontal, viewModel.isLoading ? 12 : 16)
-        .padding(.vertical, viewModel.isLoading ? 8 : 16)
+        .frame(minWidth: (!viewModel.completions.isEmpty || viewModel.currentDepth > 0) ? 550 : 200,
+               maxWidth: (!viewModel.completions.isEmpty || viewModel.currentDepth > 0) ? 650 : 200,
+               minHeight: (!viewModel.completions.isEmpty || viewModel.currentDepth > 0) ? 60 : 30)
+        .padding(.horizontal, (!viewModel.completions.isEmpty || viewModel.currentDepth > 0) ? 16 : 12)
+        .padding(.vertical, (!viewModel.completions.isEmpty || viewModel.currentDepth > 0) ? 16 : 8)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.black.opacity(0.85))
@@ -211,6 +420,7 @@ struct CompletionOptionRow: View {
     let number: Int
     let option: CompletionOption
     let isSelected: Bool
+    let depth: Int
 
     var body: some View {
         HStack(spacing: 12) {
@@ -334,6 +544,9 @@ struct PulsingDotsView: View {
         CompletionOption(keyword: "dedication", text: "and finally understood that dedication leads to mastery, requiring patience and continuous effort.")
     ]
     viewModel.selectedIndex = 2
+    // Simulate being at depth 2
+    viewModel.keywordPath = ["productivity", "consistency"]
+    viewModel.completionHistory = [[], []]
 
     return OverlayView(viewModel: viewModel)
         .frame(width: 500, height: 250)
