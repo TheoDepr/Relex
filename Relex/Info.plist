@@ -4,6 +4,8 @@
 <dict>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>Relex needs accessibility access to read text from other applications and insert AI-generated completions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Relex needs microphone access to transcribe your voice into text using AI-powered speech recognition.</string>
 	<key>LSUIElement</key>
 	<false/>
 </dict>

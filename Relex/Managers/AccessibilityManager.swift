@@ -39,6 +39,39 @@ class AccessibilityManager: ObservableObject {
 
         // Start polling for permission changes
         startMonitoringPermissions()
+
+        // Show alert to user about restarting
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+            self?.showRestartAlertIfNeeded()
+        }
+    }
+
+    private func showRestartAlertIfNeeded() {
+        // Check if permission was just granted
+        if AXIsProcessTrusted() && !isAccessibilityGranted {
+            let alert = NSAlert()
+            alert.messageText = "Accessibility Permission Granted"
+            alert.informativeText = "Relex needs to restart to enable all features. Would you like to restart now?"
+            alert.addButton(withTitle: "Restart Now")
+            alert.addButton(withTitle: "Later")
+            alert.alertStyle = .informational
+
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                // Restart the app
+                restartApp()
+            }
+        }
+    }
+
+    private func restartApp() {
+        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
+        let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
+        let task = Process()
+        task.launchPath = "/usr/bin/open"
+        task.arguments = [path]
+        task.launch()
+        exit(0)
     }
 
     private func startMonitoringPermissions() {

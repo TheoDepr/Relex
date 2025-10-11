@@ -10,6 +10,7 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var accessibilityManager: AccessibilityManager
     @ObservedObject var completionService: CompletionService
+    @ObservedObject var audioRecordingManager: AudioRecordingManager
 
     @State private var apiKey: String = ""
     @State private var showAPIKeyInput = false
@@ -49,6 +50,24 @@ struct ContentView: View {
                     .buttonStyle(.borderedProminent)
                 }
 
+                Divider()
+
+                StatusRow(
+                    icon: "mic.fill",
+                    title: "Microphone Access",
+                    status: audioRecordingManager.isMicrophoneGranted,
+                    statusText: audioRecordingManager.isMicrophoneGranted ? "Granted" : "Required"
+                )
+
+                if !audioRecordingManager.isMicrophoneGranted {
+                    Button("Request Microphone Access") {
+                        audioRecordingManager.requestMicrophonePermission()
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
+
+                Divider()
+
                 StatusRow(
                     icon: "key.fill",
                     title: "OpenAI API Key",
@@ -81,9 +100,20 @@ struct ContentView: View {
                 Text("How to Use")
                     .font(.headline)
 
+                Text("**Text Completion:**")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
                 Text("1. Press **Option + 0** in any text field")
                 Text("2. Wait for AI suggestion to appear")
                 Text("3. Press **Option + [** to accept, **Escape** to cancel")
+
+                Text("**Voice Dictation:**")
+                    .font(.subheadline)
+                    .fontWeight(.semibold)
+                    .padding(.top, 8)
+                Text("1. **Hold Right Option** key to start recording")
+                Text("2. Speak your text")
+                Text("3. **Release Right Option** to transcribe and insert")
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding()
@@ -105,6 +135,7 @@ struct ContentView: View {
         }
         .onAppear {
             accessibilityManager.checkAccessibility()
+            audioRecordingManager.checkMicrophonePermission()
             // Load existing API key if present
             apiKey = completionService.apiKey
         }
@@ -179,6 +210,7 @@ struct APIKeyInputView: View {
 #Preview {
     ContentView(
         accessibilityManager: AccessibilityManager(),
-        completionService: CompletionService()
+        completionService: CompletionService(),
+        audioRecordingManager: AudioRecordingManager()
     )
 }
