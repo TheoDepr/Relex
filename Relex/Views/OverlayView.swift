@@ -151,13 +151,8 @@ struct OverlayView: View {
         VStack(alignment: .leading, spacing: 14) {
             // Loading state
             if viewModel.isLoading {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Generating completion…")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .center)
+                PulsingDotsView()
+                    .frame(width: 200, height: 30)
             }
 
             // Error state
@@ -186,9 +181,9 @@ struct OverlayView: View {
 
                     // Key hint row
                     HStack(spacing: 16) {
-                        Label("1, 2, 3 to select", systemImage: "number.circle")
+                        Label("⌥J/⌥K to navigate", systemImage: "arrow.up.arrow.down.circle")
                             .foregroundStyle(.gray)
-                        Label("⌥[ to accept", systemImage: "checkmark.circle")
+                        Label("⌥L to accept", systemImage: "checkmark.circle")
                             .foregroundStyle(.blue)
                         Label("⎋ to cancel", systemImage: "xmark.circle")
                             .foregroundStyle(.purple)
@@ -199,8 +194,9 @@ struct OverlayView: View {
                 }
             }
         }
-        .frame(minWidth: 400, maxWidth: 500, minHeight: 60)
-        .padding(16)
+        .frame(minWidth: viewModel.isLoading ? 200 : 400, maxWidth: viewModel.isLoading ? 200 : 500, minHeight: viewModel.isLoading ? 30 : 60)
+        .padding(.horizontal, viewModel.isLoading ? 12 : 16)
+        .padding(.vertical, viewModel.isLoading ? 8 : 16)
         .background(
             RoundedRectangle(cornerRadius: 10)
                 .fill(Color.black.opacity(0.85))
@@ -218,27 +214,22 @@ struct CompletionOptionRow: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            // Number badge with gradient
-            Text("\(number)")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 24, height: 24)
-                .background(
-                    Circle()
-                        .fill(
-                            isSelected
-                                ? LinearGradient(
-                                    colors: [.blue, .purple],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                                : LinearGradient(
-                                    colors: [.gray.opacity(0.5), .gray.opacity(0.5)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
+            // Dot indicator with gradient
+            Circle()
+                .fill(
+                    isSelected
+                        ? LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        : LinearGradient(
+                            colors: [.gray.opacity(0.5), .gray.opacity(0.5)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
                         )
                 )
+                .frame(width: 10, height: 10)
 
             // Completion text
             Text(text)
@@ -272,6 +263,37 @@ struct CompletionOptionRow: View {
                 )
         )
         .contentShape(Rectangle())
+    }
+}
+
+struct PulsingDotsView: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<3) { index in
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(isAnimating ? 1.5 : 0.5)
+                    .opacity(isAnimating ? 1.0 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 0.6)
+                            .repeatForever()
+                            .delay(Double(index) * 0.2),
+                        value: isAnimating
+                    )
+            }
+        }
+        .onAppear {
+            isAnimating = true
+        }
     }
 }
 

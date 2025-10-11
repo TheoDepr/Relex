@@ -227,37 +227,6 @@ struct VoiceOverlayView: View {
     }
 }
 
-struct PulsingDotsView: View {
-    @State private var isAnimating = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(0..<3) { index in
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [.blue, .purple],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .frame(width: 10, height: 10)
-                    .scaleEffect(isAnimating ? 1.5 : 0.5)
-                    .opacity(isAnimating ? 1.0 : 0.3)
-                    .animation(
-                        .easeInOut(duration: 0.6)
-                            .repeatForever()
-                            .delay(Double(index) * 0.2),
-                        value: isAnimating
-                    )
-            }
-        }
-        .onAppear {
-            isAnimating = true
-        }
-    }
-}
-
 struct WaveformView: View {
     let audioLevel: Float
     let barCount = 30

@@ -23,7 +23,7 @@ class HotkeyManager {
     }
 
     private func setupOptionZeroHotkey() {
-        print("🔧 Setting up Option+0 hotkey...")
+        print("🔧 Setting up Option+J hotkey...")
         // Use Carbon Event Manager for system-wide hotkey registration
         // This works even in text fields because it's registered at system level
         var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
@@ -33,7 +33,7 @@ class HotkeyManager {
 
             _ = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
 
-            print("🔥 Hotkey triggered: Option + 0")
+            print("🔥 Hotkey triggered: Option + J")
             NotificationCenter.default.post(name: .relexHotkeyTriggered, object: nil)
 
             return noErr
@@ -44,9 +44,9 @@ class HotkeyManager {
             return
         }
 
-        // Register Option + 0 (keyCode 29 for '0', optionKey modifier)
+        // Register Option + J (keyCode 38 for 'j', optionKey modifier)
         let registerStatus = RegisterEventHotKey(
-            29, // keyCode for '0'
+            38, // keyCode for 'j'
             UInt32(optionKey), // Option modifier
             hotKeyID,
             GetApplicationEventTarget(),
@@ -55,7 +55,7 @@ class HotkeyManager {
         )
 
         if registerStatus == noErr {
-            print("✅ Hotkey registered: Option + 0 (system-wide)")
+            print("✅ Hotkey registered: Option + J (system-wide)")
         } else {
             print("❌ Failed to register hotkey: \(registerStatus)")
         }

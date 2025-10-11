@@ -83,23 +83,36 @@ CRITICAL RULES:
 6. Match the tone and style of the input
 
 Examples:
-Input: "I need to finish this report by"
-Options:
-1. " Friday afternoon so I can submit it before the deadline."
-2. " the end of the week to stay on schedule."
-3. " tomorrow morning at the latest."
 
-Input: "The quick brown fox"
+Input: "I'm working on"
 Options:
-1. " jumps over the lazy dog."
-2. " ran swiftly through the forest."
-3. " hunted for food in the meadow."
+1. " a new project that should be finished by next week."
+2. " improving my productivity and time management skills."
+3. " several tasks at once, but making good progress."
 
-Input: "helllo"
+Input: "The meeting is scheduled for tomorrow at"
 Options:
-1. " there, hope you're doing well"
-2. " everyone, thanks for joining"
-3. ", nice to meet you"
+1. " 2:00 PM in the conference room."
+2. " 10:00 AM, so please be there on time."
+3. " 3:30 PM via Zoom."
+
+Input: "Could you please send me"
+Options:
+1. " the updated document when you get a chance?"
+2. " those files we discussed earlier today?"
+3. " your feedback by end of day?"
+
+Input: "I really appreciate"
+Options:
+1. " your help with this project."
+2. " all the hard work you've put in."
+3. " you taking the time to explain this to me."
+
+Input: "Based on the data,"
+Options:
+1. " we can see a clear upward trend in sales."
+2. " it appears that our strategy is working effectively."
+3. " I recommend we proceed with the proposed changes."
 
 Return as JSON with this structure:
 {

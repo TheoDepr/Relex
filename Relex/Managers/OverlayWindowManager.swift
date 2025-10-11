@@ -46,9 +46,22 @@ class OverlayWindowManager: ObservableObject {
         let overlayWidth = max(400, min(500, naturalSize.width))
         let overlayHeight = max(80, naturalSize.height + 20) // Add padding
 
+        // Get screen bounds to ensure window stays on screen
+        guard let screen = NSScreen.main else {
+            print("❌ No screen found")
+            return
+        }
+        let screenFrame = screen.visibleFrame
+
         // Position window below cursor with some padding
-        let windowX = mouseLocation.x - overlayWidth / 2
-        let windowY = mouseLocation.y - overlayHeight - 20 // 20px below cursor
+        var windowX = mouseLocation.x - overlayWidth / 2
+        var windowY = mouseLocation.y - overlayHeight - 20 // 20px below cursor
+
+        // Clamp X position to keep window on screen
+        windowX = max(screenFrame.minX, min(windowX, screenFrame.maxX - overlayWidth))
+
+        // Clamp Y position to keep window on screen
+        windowY = max(screenFrame.minY, min(windowY, screenFrame.maxY - overlayHeight))
 
         let windowFrame = NSRect(
             x: windowX,
@@ -124,30 +137,32 @@ class OverlayWindowManager: ObservableObject {
 
                 print("🎹 Event tap - keyCode: \(keyCode), flags: \(flags)")
 
-                // Check for number keys 1, 2, 3 (keyCodes 18, 19, 20) to select options
-                if keyCode == 18 { // Key "1"
-                    print("1️⃣ Number 1 pressed - selecting option 1")
+                // Check for Option + J (keyCode 38) to scroll down
+                if flags.contains(.maskAlternate) && keyCode == 38 {
+                    print("⌥J pressed - scrolling down")
                     Task { @MainActor in
-                        manager.viewModel.selectOption(0)
-                    }
-                    return nil // Consume the event
-                } else if keyCode == 19 { // Key "2"
-                    print("2️⃣ Number 2 pressed - selecting option 2")
-                    Task { @MainActor in
-                        manager.viewModel.selectOption(1)
-                    }
-                    return nil // Consume the event
-                } else if keyCode == 20 { // Key "3"
-                    print("3️⃣ Number 3 pressed - selecting option 3")
-                    Task { @MainActor in
-                        manager.viewModel.selectOption(2)
+                        let currentIndex = manager.viewModel.selectedIndex
+                        let nextIndex = (currentIndex + 1) % manager.viewModel.completions.count
+                        manager.viewModel.selectOption(nextIndex)
                     }
                     return nil // Consume the event
                 }
 
-                // Check for Option + [ (keyCode 33)
-                if flags.contains(.maskAlternate) && keyCode == 33 {
-                    print("⌥[ pressed - accepting completion and consuming event")
+                // Check for Option + K (keyCode 40) to scroll up
+                if flags.contains(.maskAlternate) && keyCode == 40 {
+                    print("⌥K pressed - scrolling up")
+                    Task { @MainActor in
+                        let currentIndex = manager.viewModel.selectedIndex
+                        let count = manager.viewModel.completions.count
+                        let prevIndex = (currentIndex - 1 + count) % count
+                        manager.viewModel.selectOption(prevIndex)
+                    }
+                    return nil // Consume the event
+                }
+
+                // Check for Option + L (keyCode 37) to accept
+                if flags.contains(.maskAlternate) && keyCode == 37 {
+                    print("⌥L pressed - accepting completion and consuming event")
                     Task { @MainActor in
                         await manager.viewModel.acceptCompletion()
                     }
