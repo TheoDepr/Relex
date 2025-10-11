@@ -43,7 +43,7 @@ class OverlayWindowManager: ObservableObject {
         let naturalSize = hostingView.fittingSize
 
         // Size for the overlay with constraints
-        let overlayWidth = max(400, min(500, naturalSize.width))
+        let overlayWidth = max(550, min(650, naturalSize.width))
         let overlayHeight = max(80, naturalSize.height + 20) // Add padding
 
         // Get screen bounds to ensure window stays on screen

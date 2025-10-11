@@ -5,7 +5,7 @@ import Combine
 class OverlayViewModel: ObservableObject {
     @Published var isVisible = false
     @Published var isLoading = false
-    @Published var completions: [String] = []
+    @Published var completions: [CompletionOption] = []
     @Published var selectedIndex: Int = 0
     @Published var error: String?
     @Published var cursorPosition: CGPoint?
@@ -26,7 +26,7 @@ class OverlayViewModel: ObservableObject {
         isVisible = true
         error = nil
         completions = []
-        selectedIndex = 0
+        selectedIndex = 2  // Default to middle option (index 2 of 5 options)
         cursorPosition = accessibilityManager.getCursorPosition()
     }
 
@@ -34,7 +34,7 @@ class OverlayViewModel: ObservableObject {
         isVisible = false
         isLoading = false
         completions = []
-        selectedIndex = 0
+        selectedIndex = 2  // Reset to middle option
         error = nil
 
         // Cancel any pending refresh tasks
@@ -71,7 +71,7 @@ class OverlayViewModel: ObservableObject {
         isLoading = true
         error = nil
         completions = []
-        selectedIndex = 0
+        selectedIndex = 2  // Default to middle option
 
         // Check API key first
         guard !completionService.apiKey.isEmpty else {
@@ -101,7 +101,7 @@ class OverlayViewModel: ObservableObject {
                 print("   \(index + 1). \"\(result)\"")
             }
             completions = results
-            selectedIndex = 0 // Default to first option
+            selectedIndex = 2 // Default to middle option (3rd of 5)
         } catch {
             print("❌ Completion error: \(error.localizedDescription)")
             // Make API authentication errors more user-friendly
@@ -121,7 +121,7 @@ class OverlayViewModel: ObservableObject {
             return
         }
 
-        let selectedCompletion = completions[selectedIndex]
+        let selectedCompletion = completions[selectedIndex].text
         print("✍️ Hiding overlay first, then inserting completion \(selectedIndex + 1): \"\(selectedCompletion)\"")
         hide()
         windowManager?.hideOverlay()
@@ -170,11 +170,11 @@ struct OverlayView: View {
             // Completion state
             else if !viewModel.completions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
-                    // Show 3 completion options
+                    // Show 5 completion options
                     ForEach(0..<viewModel.completions.count, id: \.self) { index in
                         CompletionOptionRow(
                             number: index + 1,
-                            text: viewModel.completions[index],
+                            option: viewModel.completions[index],
                             isSelected: index == viewModel.selectedIndex
                         )
                     }
@@ -194,7 +194,7 @@ struct OverlayView: View {
                 }
             }
         }
-        .frame(minWidth: viewModel.isLoading ? 200 : 400, maxWidth: viewModel.isLoading ? 200 : 500, minHeight: viewModel.isLoading ? 30 : 60)
+        .frame(minWidth: viewModel.isLoading ? 200 : 550, maxWidth: viewModel.isLoading ? 200 : 650, minHeight: viewModel.isLoading ? 30 : 60)
         .padding(.horizontal, viewModel.isLoading ? 12 : 16)
         .padding(.vertical, viewModel.isLoading ? 8 : 16)
         .background(
@@ -209,11 +209,18 @@ struct OverlayView: View {
 
 struct CompletionOptionRow: View {
     let number: Int
-    let text: String
+    let option: CompletionOption
     let isSelected: Bool
 
     var body: some View {
         HStack(spacing: 12) {
+            // Keyword (fixed width, no truncation)
+            Text(option.keyword)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(isSelected ? Color(red: 0.6, green: 0.8, blue: 1.0) : Color.gray.opacity(0.7))
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(width: 140, alignment: .trailing)
+
             // Dot indicator with gradient
             Circle()
                 .fill(
@@ -232,15 +239,15 @@ struct CompletionOptionRow: View {
                 .frame(width: 10, height: 10)
 
             // Completion text
-            Text(text)
+            Text(option.text)
                 .font(.body)
                 .foregroundColor(isSelected ? .white : .gray)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 8)
                 .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
@@ -320,11 +327,13 @@ struct PulsingDotsView: View {
     )
     viewModel.isVisible = true
     viewModel.completions = [
-        "and then I realized that the key to success is consistency.",
-        "and subsequently discovered the importance of perseverance.",
-        "and finally understood that dedication leads to mastery."
+        CompletionOption(keyword: "brief", text: "and learned."),
+        CompletionOption(keyword: "simple", text: "and then I learned something important."),
+        CompletionOption(keyword: "consistency", text: "and then I realized that the key to success is consistency."),
+        CompletionOption(keyword: "perseverance", text: "and subsequently discovered the importance of perseverance."),
+        CompletionOption(keyword: "dedication", text: "and finally understood that dedication leads to mastery, requiring patience and continuous effort.")
     ]
-    viewModel.selectedIndex = 0
+    viewModel.selectedIndex = 2
 
     return OverlayView(viewModel: viewModel)
         .frame(width: 500, height: 250)

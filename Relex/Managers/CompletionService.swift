@@ -14,6 +14,7 @@ struct CompletionOptions: Codable {
 }
 
 struct CompletionOption: Codable {
+    let keyword: String
     let text: String
 }
 
@@ -36,7 +37,7 @@ class CompletionService: ObservableObject {
         objectWillChange.send()
     }
 
-    func generateCompletions(context: String) async throws -> [String] {
+    func generateCompletions(context: String) async throws -> [CompletionOption] {
         guard !apiKey.isEmpty else {
             throw CompletionError.missingAPIKey
         }
@@ -69,10 +70,12 @@ class CompletionService: ObservableObject {
 You are **ReLex**, an AI text completion assistant like GitHub Copilot or Gmail Smart Compose.
 Your job: given text before the cursor, predict what comes next. This is NOT a chat - you're completing inline text.
 
-Generate exactly 3 distinct completion options as variations of how to continue the text:
-- Option 1: Most natural/likely continuation
-- Option 2: Alternative style or direction
-- Option 3: Creative or different approach
+Generate exactly 5 distinct completion options as variations of how to continue the text:
+- Option 1: Short and concise continuation
+- Option 2: Natural/likely continuation
+- Option 3: Most balanced and common approach (DEFAULT)
+- Option 4: Alternative style or direction
+- Option 5: Creative or expansive approach
 
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
@@ -86,40 +89,54 @@ Examples:
 
 Input: "I'm working on"
 Options:
-1. " a new project that should be finished by next week."
-2. " improving my productivity and time management skills."
-3. " several tasks at once, but making good progress."
+1. keyword: "brief update", text: " this now."
+2. keyword: "current task", text: " a new project."
+3. keyword: "project deadline", text: " a new project that should be finished by next week."
+4. keyword: "productivity", text: " improving my productivity and time management skills."
+5. keyword: "multitasking", text: " several tasks at once while also planning the next sprint."
 
 Input: "The meeting is scheduled for tomorrow at"
 Options:
-1. " 2:00 PM in the conference room."
-2. " 10:00 AM, so please be there on time."
-3. " 3:30 PM via Zoom."
+1. keyword: "time only", text: " 2 PM."
+2. keyword: "morning slot", text: " 10:00 AM."
+3. keyword: "afternoon slot", text: " 2:00 PM in the conference room."
+4. keyword: "detailed time", text: " 10:00 AM, so please be there on time."
+5. keyword: "virtual meeting", text: " 3:30 PM via Zoom - I'll send the calendar invite with all the details."
 
 Input: "Could you please send me"
 Options:
-1. " the updated document when you get a chance?"
-2. " those files we discussed earlier today?"
-3. " your feedback by end of day?"
+1. keyword: "brief request", text: " the files?"
+2. keyword: "document", text: " the updated document?"
+3. keyword: "files request", text: " those files we discussed earlier today?"
+4. keyword: "detailed ask", text: " the updated document when you get a chance?"
+5. keyword: "urgent request", text: " your feedback by end of day so we can move forward with the proposal?"
 
 Input: "I really appreciate"
 Options:
-1. " your help with this project."
-2. " all the hard work you've put in."
-3. " you taking the time to explain this to me."
+1. keyword: "simple thanks", text: " it."
+2. keyword: "your help", text: " your help."
+3. keyword: "project help", text: " your help with this project."
+4. keyword: "hard work", text: " all the hard work you've put in."
+5. keyword: "detailed thanks", text: " you taking the time to explain this to me and answer all my questions."
 
 Input: "Based on the data,"
 Options:
-1. " we can see a clear upward trend in sales."
-2. " it appears that our strategy is working effectively."
-3. " I recommend we proceed with the proposed changes."
+1. keyword: "brief insight", text: " sales are up."
+2. keyword: "trend", text: " we see growth."
+3. keyword: "sales trend", text: " we can see a clear upward trend in sales."
+4. keyword: "strategy", text: " it appears that our strategy is working effectively."
+5. keyword: "recommendation", text: " I recommend we proceed with the proposed changes and allocate additional resources."
+
+IMPORTANT: Keywords should be 1-3 words that capture the essence of each completion option.
 
 Return as JSON with this structure:
 {
   "options": [
-    {"text": "completion 1"},
-    {"text": "completion 2"},
-    {"text": "completion 3"}
+    {"keyword": "brief summary", "text": "completion 1"},
+    {"keyword": "brief summary", "text": "completion 2"},
+    {"keyword": "brief summary", "text": "completion 3"},
+    {"keyword": "brief summary", "text": "completion 4"},
+    {"keyword": "brief summary", "text": "completion 5"}
   ]
 }
 """
@@ -144,9 +161,10 @@ Return as JSON with this structure:
                                 "items": [
                                     "type": "object",
                                     "properties": [
+                                        "keyword": ["type": "string"],
                                         "text": ["type": "string"]
                                     ],
-                                    "required": ["text"],
+                                    "required": ["keyword", "text"],
                                     "additionalProperties": false
                                 ]
                             ]
@@ -191,15 +209,12 @@ Return as JSON with this structure:
         let decoder = JSONDecoder()
         let completionOptions = try decoder.decode(CompletionOptions.self, from: contentData)
 
-        // Extract just the text from each option
-        let completions = completionOptions.options.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
-
-        // Ensure we have at least 3 options, pad with empty if needed
-        guard completions.count >= 3 else {
+        // Ensure we have at least 5 options
+        guard completionOptions.options.count >= 5 else {
             throw CompletionError.insufficientOptions
         }
 
-        return Array(completions.prefix(3))
+        return Array(completionOptions.options.prefix(5))
     }
 }
 
