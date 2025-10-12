@@ -46,17 +46,18 @@ An AI-powered text completion assistant for macOS that works system-wide across 
 
 ## Usage
 
-1. **Trigger Completion**: Press `Option + 0` in any text field
-2. **Wait for Suggestion**: A floating overlay will appear with the AI-generated completion
-3. **Accept**: Press `Option + [` to insert the suggestion
-4. **Cancel**: Press `Escape` to dismiss
+1. **Trigger Completion**: Press `Option + J` in any text field
+2. **Navigate Options**: Use `Option + J/K` to scroll through 5 completion options
+3. **Drill Down**: Press `Option + L` to refine into a keyword
+4. **Accept**: Press `Option + F` to insert the selected completion
+5. **Cancel**: Press `Escape` to dismiss
 
 ## How It Works
 
-1. When you press `Option + 0`, Relex captures the text from your focused field
-2. The text is sent to OpenAI's API for completion
-3. A floating overlay appears near your cursor with the suggestion
-4. Accept the suggestion to insert it into your field
+1. When you press `Option + J`, Relex captures the text from your focused field
+2. The text is sent to OpenAI's API for 5 distinct completion options (short to expansive)
+3. A floating overlay appears near your cursor with the suggestions
+4. Navigate with `Option + J/K`, drill down with `Option + L`, or accept with `Option + F`
 
 ### Text Insertion Methods
 
@@ -84,9 +85,18 @@ Relex/
 
 ## Keyboard Shortcuts
 
-- `Option + 0`: Trigger completion
-- `Option + [`: Accept suggestion
+### Text Completion
+- `Option + J`: Trigger completion / Navigate down
+- `Option + K`: Navigate up
+- `Option + L`: Drill down into keyword
+- `Option + H`: Navigate back (when drilling down)
+- `Option + F`: Accept and insert completion
 - `Escape`: Cancel/dismiss overlay
+
+### Voice Dictation
+- `Hold Right Option`: Start recording
+- `Release Right Option`: Transcribe and insert
+- `Escape`: Cancel recording
 
 ## Troubleshooting
 
@@ -106,11 +116,11 @@ Relex/
 
 ## API Usage
 
-Relex uses OpenAI's `gpt-4o-mini` model. API calls are only made when you trigger a completion with `Option + 0`.
+Relex uses OpenAI's `gpt-4o-mini` model. API calls are only made when you trigger a completion with `Option + J`.
 
 ## Privacy
 
-- Relex only accesses text from the currently focused field when you press `Option + 0`
+- Relex only accesses text from the currently focused field when you press `Option + J`
 - Text is sent to OpenAI's API for completion
 - Your API key is stored locally in UserDefaults
 - No data is collected or stored by Relex

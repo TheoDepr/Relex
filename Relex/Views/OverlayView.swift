@@ -330,7 +330,7 @@ struct OverlayView: View {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.turn.down.right")
                         .font(.system(size: 10))
-                        .foregroundColor(.blue.opacity(0.7))
+                        .foregroundColor(.purple.opacity(0.7))
 
                     HStack(spacing: 4) {
                         ForEach(Array(viewModel.keywordPath.enumerated()), id: \.offset) { index, keyword in
@@ -342,7 +342,7 @@ struct OverlayView: View {
                             Text(keyword)
                                 .font(.caption)
                                 .fontWeight(.semibold)
-                                .foregroundColor(.blue.opacity(0.8))
+                                .foregroundColor(.purple.opacity(0.8))
                         }
                     }
 
@@ -354,7 +354,7 @@ struct OverlayView: View {
                 }
                 .padding(.horizontal, 8)
                 .padding(.vertical, 6)
-                .background(Color.blue.opacity(0.05))
+                .background(Color.purple.opacity(0.05))
                 .cornerRadius(6)
             }
 
@@ -382,7 +382,8 @@ struct OverlayView: View {
                                     number: index + 1,
                                     option: viewModel.completions[index],
                                     isSelected: index == viewModel.selectedIndex,
-                                    depth: viewModel.currentDepth
+                                    depth: viewModel.currentDepth,
+                                    isLoading: viewModel.isLoading
                                 )
                             }
 
@@ -392,7 +393,7 @@ struct OverlayView: View {
                                     .foregroundStyle(.gray)
                                 Label("⌥L to refine", systemImage: "arrow.down.circle")
                                     .foregroundStyle(.blue)
-                                Label("⇧⌥L to accept", systemImage: "checkmark.circle")
+                                Label("⌥F to accept", systemImage: "checkmark.circle")
                                     .foregroundStyle(.green)
                                 if viewModel.currentDepth > 0 {
                                     Label("⌥H to back", systemImage: "arrow.left.circle")
@@ -405,28 +406,10 @@ struct OverlayView: View {
                             .padding(.horizontal, 4)
                             .padding(.top, 4)
                         }
-                        .opacity(viewModel.isLoading ? 0.5 : 1.0)
                     } else {
                         // Show loading dots when no completions yet (initial load)
                         PulsingDotsView()
                             .frame(width: 200, height: 30)
-                    }
-
-                    // Loading overlay indicator
-                    if viewModel.isLoading && !viewModel.completions.isEmpty {
-                        VStack {
-                            Spacer()
-                            HStack {
-                                Spacer()
-                                PulsingDotsView()
-                                    .frame(width: 60, height: 20)
-                                    .padding(8)
-                                    .background(Color.black.opacity(0.7))
-                                    .cornerRadius(8)
-                                Spacer()
-                            }
-                            Spacer()
-                        }
                     }
                 }
             }
@@ -451,17 +434,33 @@ struct CompletionOptionRow: View {
     let option: CompletionOption
     let isSelected: Bool
     let depth: Int
+    let isLoading: Bool
+
+    @State private var animationScale: CGFloat = 1.0
+    @State private var animationOpacity: Double = 1.0
 
     var body: some View {
         HStack(spacing: 12) {
-            // Keyword (flexible width with max constraint to keep dots aligned)
+            // Keyword with gradient or solid color (flexible width with max constraint to keep dots aligned)
             Text(option.keyword)
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(isSelected ? Color(red: 0.6, green: 0.8, blue: 1.0) : Color.gray.opacity(0.7))
+                .foregroundStyle(
+                    isSelected
+                        ? LinearGradient(
+                            colors: [.purple, .purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        : LinearGradient(
+                            colors: [.blue, .blue],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                )
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(width: 160, alignment: .trailing)
 
-            // Dot indicator with gradient
+            // Dot indicator with gradient - animated when loading
             Circle()
                 .fill(
                     isSelected
@@ -477,11 +476,38 @@ struct CompletionOptionRow: View {
                         )
                 )
                 .frame(width: 10, height: 10)
+                .scaleEffect(animationScale)
+                .opacity(animationOpacity)
+                .onChange(of: isLoading) { newValue in
+                    if newValue {
+                        // Calculate delay: middle (3) starts first, then 2/4, then 1/5
+                        let delayForRow: Double
+                        switch number {
+                        case 3: delayForRow = 0.0      // Middle starts first
+                        case 2, 4: delayForRow = 0.15  // Adjacent rows next
+                        case 1, 5: delayForRow = 0.3   // Outer rows last
+                        default: delayForRow = 0.0
+                        }
 
-            // Completion text (takes remaining space, truncates if needed)
-            Text(option.text)
+                        // Start pulsing animation
+                        DispatchQueue.main.asyncAfter(deadline: .now() + delayForRow) {
+                            withAnimation(.easeInOut(duration: 0.6).repeatForever(autoreverses: true)) {
+                                animationScale = 1.5
+                                animationOpacity = 0.4
+                            }
+                        }
+                    } else {
+                        // Stop animation and return to normal smoothly
+                        withAnimation(.easeOut(duration: 0.3)) {
+                            animationScale = 1.0
+                            animationOpacity = 1.0
+                        }
+                    }
+                }
+
+            // Completion text with highlighted important words
+            buildHighlightedText()
                 .font(.body)
-                .foregroundColor(isSelected ? .white : .gray)
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -493,6 +519,42 @@ struct CompletionOptionRow: View {
                 .fill(isSelected ? Color.white.opacity(0.1) : Color.clear)
         )
         .contentShape(Rectangle())
+    }
+
+    // Build text with important words highlighted
+    private func buildHighlightedText() -> Text {
+        let words = option.text.split(separator: " ", omittingEmptySubsequences: false)
+        var result = Text("")
+
+        for (index, word) in words.enumerated() {
+            // Check if this word (case-insensitive, without punctuation) is in importantWords
+            let cleanWord = String(word).trimmingCharacters(in: .punctuationCharacters).lowercased()
+            let isImportant = option.importantWords.contains { importantWord in
+                importantWord.lowercased() == cleanWord
+            }
+
+            // Create text segment with appropriate styling
+            let textSegment: Text
+            if isImportant {
+                textSegment = Text(word)
+                    .foregroundColor(.white)
+                    .fontWeight(.semibold)
+            } else {
+                textSegment = Text(word)
+                    .foregroundColor(isSelected ? .gray.opacity(0.8) : .gray.opacity(0.6))
+            }
+
+            // Add the text segment
+            result = result + textSegment
+
+            // Add space after each word except the last
+            if index < words.count - 1 {
+                result = result + Text(" ")
+                    .foregroundColor(isSelected ? .gray.opacity(0.8) : .gray.opacity(0.6))
+            }
+        }
+
+        return result
     }
 }
 
@@ -550,11 +612,11 @@ struct PulsingDotsView: View {
     )
     viewModel.isVisible = true
     viewModel.completions = [
-        CompletionOption(keyword: "brief", text: "and learned."),
-        CompletionOption(keyword: "simple", text: "and then I learned something important."),
-        CompletionOption(keyword: "consistency", text: "and then I realized that the key to success is consistency."),
-        CompletionOption(keyword: "perseverance", text: "and subsequently discovered the importance of perseverance."),
-        CompletionOption(keyword: "dedication", text: "and finally understood that dedication leads to mastery, requiring patience and continuous effort.")
+        CompletionOption(keyword: "brief", text: "and learned.", importantWords: ["learned"]),
+        CompletionOption(keyword: "simple", text: "and then I learned something important.", importantWords: ["learned", "important"]),
+        CompletionOption(keyword: "consistency", text: "and then I realized that the key to success is consistency.", importantWords: ["realized", "key", "success"]),
+        CompletionOption(keyword: "perseverance", text: "and subsequently discovered the importance of perseverance.", importantWords: ["discovered", "importance", "perseverance"]),
+        CompletionOption(keyword: "dedication", text: "and finally understood that dedication leads to mastery, requiring patience and continuous effort.", importantWords: ["dedication", "mastery", "patience"])
     ]
     viewModel.selectedIndex = 2
     // Simulate being at depth 2

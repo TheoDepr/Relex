@@ -16,6 +16,7 @@ struct CompletionOptions: Codable {
 struct CompletionOption: Codable {
     let keyword: String
     let text: String
+    let importantWords: [String]
 }
 
 @MainActor
@@ -88,6 +89,9 @@ The 5 options should further find the goal of the user based on their keyword ex
 - Option 4: Detailed completion emphasizing the "\(currentKeyword)" theme
 - Option 5: Most comprehensive completion deeply exploring "\(currentKeyword)" meaning
 
+IMPORTANT WORDS REQUIREMENT:
+For EACH completion, you MUST identify 1-4 important words that will be highlighted. Pick the most meaningful nouns, verbs, or adjectives. NEVER leave importantWords empty - every completion needs at least one highlighted word.
+
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
 2. Your completion MUST flow naturally from the EXACT LAST WORDS in the input text
@@ -120,26 +124,31 @@ CRITICAL RULES:
 
 Examples of refinement with keyword chains (note how completions express the concept WITHOUT repeating the exact keyword):
 
+15. For EACH completion, identify 2-4 of the most important/meaningful words that convey the key concept
+16. Important words should be nouns, verbs, adjectives that carry core meaning - avoid articles, prepositions, conjunctions
+17. CRITICAL: Every completion MUST have at least 1 important word highlighted - never return an empty importantWords array
+18. These words will be visually highlighted to help users quickly scan and understand options
+
 Example 1 - Single level:
 Input: "I need to "
 Keyword chain: "deadline"
 Refined options expressing DEADLINE concept:
-1. keyword: "urgent", text: "finish this by end of day."
-2. keyword: "due date", text: "complete the project by Friday."
-3. keyword: "time constraint", text: "get this done before the client meeting next week."
-4. keyword: "pressing timeline", text: "prioritize tasks since several things are due this month."
-5. keyword: "tight schedule", text: "work efficiently because everything needs to be done and reviewed by Thursday at 3 PM."
+1. keyword: "urgent", text: "finish this by end of day.", importantWords: ["finish", "end", "day"]
+2. keyword: "due date", text: "complete the project by Friday.", importantWords: ["complete", "project", "Friday"]
+3. keyword: "time constraint", text: "get this done before the client meeting next week.", importantWords: ["done", "client", "meeting", "week"]
+4. keyword: "pressing timeline", text: "prioritize tasks since several things are due this month.", importantWords: ["prioritize", "tasks", "due", "month"]
+5. keyword: "tight schedule", text: "work efficiently because everything needs to be done and reviewed by Thursday at 3 PM.", importantWords: ["efficiently", "reviewed", "Thursday"]
 
 Example 2 - Multi-level drill-down:
 Input: "I need to "
 Keyword chain: "project > deadline > urgent"
 Context: User first selected "project", then "deadline", now exploring "urgent"
 Refined options expressing URGENT concept in context of project deadlines:
-1. keyword: "immediate", text: "complete the critical path items today."
-2. keyword: "priority", text: "focus on the high-impact deliverables that block other teams."
-3. keyword: "time-sensitive", text: "finish the MVP features before tomorrow's stakeholder demo."
-4. keyword: "critical path", text: "resolve the blocking bugs and deploy the hotfix by end of business today."
-5. keyword: "emergency mode", text: "coordinate with the team to parallelize work streams and hit tonight's production cutoff."
+1. keyword: "immediate", text: "complete the critical path items today.", importantWords: ["complete", "critical", "today"]
+2. keyword: "priority", text: "focus on the high-impact deliverables that block other teams.", importantWords: ["focus", "high-impact", "deliverables", "block"]
+3. keyword: "time-sensitive", text: "finish the MVP features before tomorrow's stakeholder demo.", importantWords: ["finish", "MVP", "demo"]
+4. keyword: "critical path", text: "resolve the blocking bugs and deploy the hotfix by end of business today.", importantWords: ["resolve", "bugs", "deploy", "hotfix"]
+5. keyword: "emergency mode", text: "coordinate with the team to parallelize work streams and hit tonight's production cutoff.", importantWords: ["coordinate", "parallelize", "cutoff"]
 """
         } else {
             systemPrompt = """
@@ -152,6 +161,9 @@ Generate exactly 5 distinct completion options as variations of how to continue 
 - Option 3: Most balanced and common approach (DEFAULT)
 - Option 4: Alternative style or direction
 - Option 5: Creative or expansive approach
+
+IMPORTANT WORDS REQUIREMENT:
+For EACH completion, you MUST identify 1-4 important words that will be highlighted. Pick the most meaningful nouns, verbs, or adjectives. NEVER leave importantWords empty - every completion needs at least one highlighted word.
 
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
@@ -179,6 +191,10 @@ CRITICAL RULES:
 9. Make them meaningfully different from each other
 10. Match the tone and style of the input
 11. The completion should read smoothly when appended directly to the input text
+12. For EACH completion, identify 2-4 of the most important/meaningful words that convey the key concept
+13. Important words should be nouns, verbs, adjectives that carry core meaning - avoid articles, prepositions, conjunctions
+14. CRITICAL: Every completion MUST have at least 1 important word highlighted - never return an empty importantWords array
+15. These words will be visually highlighted to help users quickly scan and understand options
 """
         }
 
@@ -191,30 +207,30 @@ Examples:
 
 Input: "I'm working on"
 Options:
-1. keyword: "brief update", text: " this now."
-2. keyword: "current task", text: " a new project."
-3. keyword: "project deadline", text: " a new project that should be finished by next week."
-4. keyword: "productivity", text: " improving my productivity and time management skills."
-5. keyword: "multitasking", text: " several tasks at once while also planning the next sprint."
+1. keyword: "brief update", text: " this now.", importantWords: ["now"]
+2. keyword: "current task", text: " a new project.", importantWords: ["new", "project"]
+3. keyword: "project deadline", text: " a new project that should be finished by next week.", importantWords: ["project", "finished", "week"]
+4. keyword: "productivity", text: " improving my productivity and time management skills.", importantWords: ["improving", "productivity", "management"]
+5. keyword: "multitasking", text: " several tasks at once while also planning the next sprint.", importantWords: ["tasks", "planning", "sprint"]
 
 Input: "The meeting is scheduled for tomorrow at"
 Options:
-1. keyword: "time only", text: " 2 PM."
-2. keyword: "morning slot", text: " 10:00 AM."
-3. keyword: "afternoon slot", text: " 2:00 PM in the conference room."
-4. keyword: "detailed time", text: " 10:00 AM, so please be there on time."
-5. keyword: "virtual meeting", text: " 3:30 PM via Zoom - I'll send the calendar invite with all the details."
+1. keyword: "time only", text: " 2 PM.", importantWords: ["2 PM"]
+2. keyword: "morning slot", text: " 10:00 AM.", importantWords: ["10:00 AM"]
+3. keyword: "afternoon slot", text: " 2:00 PM in the conference room.", importantWords: ["2:00 PM", "conference"]
+4. keyword: "detailed time", text: " 10:00 AM, so please be there on time.", importantWords: ["10:00 AM", "time"]
+5. keyword: "virtual meeting", text: " 3:30 PM via Zoom - I'll send the calendar invite with all the details.", importantWords: ["3:30 PM", "Zoom", "invite"]
 
 IMPORTANT: Keywords should be 1-3 words that capture the essence of each completion option.
 
 Return as JSON with this structure:
 {
   "options": [
-    {"keyword": "brief summary", "text": "completion 1"},
-    {"keyword": "brief summary", "text": "completion 2"},
-    {"keyword": "brief summary", "text": "completion 3"},
-    {"keyword": "brief summary", "text": "completion 4"},
-    {"keyword": "brief summary", "text": "completion 5"}
+    {"keyword": "brief summary", "text": "completion 1", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 2", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 3", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 4", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 5", "importantWords": ["word1", "word2"]}
   ]
 }
 """
@@ -226,11 +242,11 @@ IMPORTANT: Keywords should be 1-3 words that capture the essence of each complet
 Return as JSON with this structure:
 {
   "options": [
-    {"keyword": "brief summary", "text": "completion 1"},
-    {"keyword": "brief summary", "text": "completion 2"},
-    {"keyword": "brief summary", "text": "completion 3"},
-    {"keyword": "brief summary", "text": "completion 4"},
-    {"keyword": "brief summary", "text": "completion 5"}
+    {"keyword": "brief summary", "text": "completion 1", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 2", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 3", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 4", "importantWords": ["word1", "word2"]},
+    {"keyword": "brief summary", "text": "completion 5", "importantWords": ["word1", "word2"]}
   ]
 }
 """
@@ -264,9 +280,14 @@ Return as JSON with this structure:
                                     "type": "object",
                                     "properties": [
                                         "keyword": ["type": "string"],
-                                        "text": ["type": "string"]
+                                        "text": ["type": "string"],
+                                        "importantWords": [
+                                            "type": "array",
+                                            "items": ["type": "string"],
+                                            "minItems": 1
+                                        ]
                                     ],
-                                    "required": ["keyword", "text"],
+                                    "required": ["keyword", "text", "importantWords"],
                                     "additionalProperties": false
                                 ]
                             ]

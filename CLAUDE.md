@@ -55,7 +55,7 @@ The app follows an MVVM architecture with a central coordinator pattern:
   - Handles API key storage via UserDefaults
 - **OverlayWindowManager**: Manages floating completion overlay window (NSPanel)
   - Creates borderless, non-activating panel positioned near cursor
-  - Sets up CGEventTap to intercept overlay-specific hotkeys (Option+J/K/L/H, Shift+Option+L, Escape)
+  - Sets up CGEventTap to intercept overlay-specific hotkeys (Option+J/K/L/H/F, Escape)
   - Auto-refreshes completions on keystroke with 500ms debounce (only at root level)
 - **AudioRecordingManager**: Handles audio recording for voice dictation
   - Manages microphone permissions
@@ -68,7 +68,7 @@ The app follows an MVVM architecture with a central coordinator pattern:
   - Triggers completion requests
   - Handles selection navigation (Option+J/K)
   - Manages drill-down refinement with history stack
-  - Accepts/cancels completions (Shift+Option+L/Escape)
+  - Accepts/cancels completions (Option+F/Escape)
   - Implements debounced refresh on keystroke changes (root level only)
   - Tracks keyword path and depth for breadcrumb navigation
 - **VoiceOverlayViewModel**: State management for voice recording overlay
@@ -141,7 +141,7 @@ Text Completion Overlay (Root Level):
 - **Option+J**: Toggle overlay / Scroll down through options
 - **Option+K**: Scroll up through options
 - **Option+L**: Drill down into selected keyword (refine)
-- **Shift+Option+L**: Accept and insert selected completion
+- **Option+F**: Accept and insert selected completion
 - **Escape**: Cancel and hide overlay
 
 Text Completion Overlay (Drill-Down Mode):
@@ -149,7 +149,7 @@ Text Completion Overlay (Drill-Down Mode):
 - **Option+K**: Scroll up through refined options
 - **Option+L**: Drill deeper into selected keyword (unlimited depth)
 - **Option+H**: Navigate back one level in history
-- **Shift+Option+L**: Accept and insert selected completion
+- **Option+F**: Accept and insert selected completion
 - **Escape**: Cancel and hide overlay
 
 Voice Dictation:
