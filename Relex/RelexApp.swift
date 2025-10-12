@@ -170,10 +170,8 @@ class AppCoordinator: ObservableObject {
 
     nonisolated private func handleVoiceRecordingStopped() async {
         print("🛑 AppCoordinator: Handling voice recording stop")
-        await MainActor.run {
-            Task {
-                await voiceOverlayViewModel.stopRecordingAndTranscribe()
-            }
+        Task { @MainActor in
+            await voiceOverlayViewModel.stopRecordingAndTranscribe()
         }
     }
 

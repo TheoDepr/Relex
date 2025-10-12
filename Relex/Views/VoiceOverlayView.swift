@@ -35,6 +35,12 @@ class VoiceOverlayViewModel: ObservableObject {
     func startRecording() async {
         print("🎤 VoiceOverlayViewModel: Starting recording")
 
+        // If we're in any non-idle state, reset first
+        if state != .idle {
+            print("⚠️ Resetting state from \(state) to idle before starting new recording")
+            hide()
+        }
+
         // Capture context from focused element
         capturedContext = await accessibilityManager.captureTextFromFocusedElement()
         if let context = capturedContext {
@@ -71,6 +77,22 @@ class VoiceOverlayViewModel: ObservableObject {
 
         guard state == .recording else {
             print("⚠️ Not in recording state, ignoring")
+            return
+        }
+
+        // Check minimum recording duration (0.5 seconds)
+        let recordedDuration = audioRecordingManager.recordingDuration
+        if recordedDuration < 0.5 {
+            print("⏭️ Recording too short (\(String(format: "%.2f", recordedDuration))s), ignoring")
+
+            // Stop and cleanup
+            if let audioURL = audioRecordingManager.stopRecording() {
+                audioRecordingManager.cleanupRecording(at: audioURL)
+            }
+
+            // Hide without error
+            hide()
+            windowManager?.hideOverlay()
             return
         }
 

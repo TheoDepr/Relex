@@ -59,6 +59,12 @@ class AudioRecordingManager: NSObject, ObservableObject {
             return nil
         }
 
+        // Prevent starting a new recording if one is already in progress
+        if isRecording {
+            print("⚠️ Recording already in progress, ignoring start request")
+            return recordingURL
+        }
+
         // Create temporary file URL
         let tempDir = FileManager.default.temporaryDirectory
         let fileName = "relex_recording_\(UUID().uuidString).m4a"
@@ -117,8 +123,13 @@ class AudioRecordingManager: NSObject, ObservableObject {
 
         audioLevel = 0.0
 
+        let finalURL = recordingURL
+
+        // Clear recorder reference
+        audioRecorder = nil
+
         print("✅ Stopped recording, duration: \(String(format: "%.1f", recordingDuration))s")
-        return recordingURL
+        return finalURL
     }
 
     private func startAudioLevelMonitoring() {

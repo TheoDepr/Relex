@@ -9,6 +9,8 @@ class HotkeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var eventTap: CFMachPort?
     private var isRightOptionPressed = false
+    private var lastRightOptionEventTime: TimeInterval = 0
+    private let debounceInterval: TimeInterval = 0.1 // 100ms debounce
 
     func startListening() {
         print("🎯 HotkeyManager.startListening() called")
@@ -112,17 +114,26 @@ class HotkeyManager {
                     if keyCode == 61 {
                         // Check if the alternate flag is set (key is pressed)
                         let isPressed = flags.contains(.maskAlternate)
+                        let currentTime = Date().timeIntervalSince1970
 
                         print("🔍 Right Option event - isPressed: \(isPressed), wasPressed: \(manager.isRightOptionPressed)")
+
+                        // Debounce rapid flag changes to prevent duplicate events
+                        guard currentTime - manager.lastRightOptionEventTime >= manager.debounceInterval else {
+                            print("⏭️ Debouncing Right Option event (too soon)")
+                            return Unmanaged.passRetained(event)
+                        }
 
                         if isPressed && !manager.isRightOptionPressed {
                             // Right Option pressed
                             manager.isRightOptionPressed = true
+                            manager.lastRightOptionEventTime = currentTime
                             print("🎤 Right Option key pressed (keyCode: \(keyCode))")
                             NotificationCenter.default.post(name: .voiceRecordingStarted, object: nil)
                         } else if !isPressed && manager.isRightOptionPressed {
                             // Right Option released
                             manager.isRightOptionPressed = false
+                            manager.lastRightOptionEventTime = currentTime
                             print("🛑 Right Option key released (keyCode: \(keyCode))")
                             NotificationCenter.default.post(name: .voiceRecordingStopped, object: nil)
                         }
