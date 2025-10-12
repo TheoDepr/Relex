@@ -115,15 +115,12 @@ class OverlayViewModel: ObservableObject {
 
         print("🔄 Refreshing with keyword path: \(keywordPath.joined(separator: " > "))")
 
-        // Use the last keyword in the path for refinement
-        let lastKeyword = keywordPath.last!
-
         do {
             let results = try await completionService.generateCompletions(
                 context: currentContext,
-                refinementKeyword: lastKeyword
+                refinementKeywords: keywordPath
             )
-            print("✅ Received \(results.count) refreshed completions for '\(lastKeyword)'")
+            print("✅ Received \(results.count) refreshed completions for keyword path")
             completions = results
             selectedIndex = 2
         } catch {
@@ -247,9 +244,9 @@ class OverlayViewModel: ObservableObject {
         do {
             let results = try await completionService.generateCompletions(
                 context: currentContext,
-                refinementKeyword: selectedOption.keyword
+                refinementKeywords: keywordPath
             )
-            print("✅ Received \(results.count) refined completions for '\(selectedOption.keyword)'")
+            print("✅ Received \(results.count) refined completions for '\(keywordPath.joined(separator: " > "))'")
             completions = results
             selectedIndex = 2
         } catch {

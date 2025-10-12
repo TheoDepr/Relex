@@ -37,7 +37,7 @@ class CompletionService: ObservableObject {
         objectWillChange.send()
     }
 
-    func generateCompletions(context: String, refinementKeyword: String? = nil) async throws -> [CompletionOption] {
+    func generateCompletions(context: String, refinementKeywords: [String] = []) async throws -> [CompletionOption] {
         guard !apiKey.isEmpty else {
             throw CompletionError.missingAPIKey
         }
@@ -63,25 +63,41 @@ class CompletionService: ObservableObject {
 
         // Build system prompt based on whether this is a refinement
         let systemPrompt: String
-        if let keyword = refinementKeyword {
+        if !refinementKeywords.isEmpty {
+            let keywordChain = refinementKeywords.joined(separator: " > ")
+            let currentKeyword = refinementKeywords.last!
+
             systemPrompt = """
 You are **ReLex**, an AI text completion assistant like GitHub Copilot or Gmail Smart Compose.
-The user has selected the keyword "\(keyword)" and wants 5 variations that explore this concept.
+The user has drilled down through these keywords: "\(keywordChain)"
+Currently focusing on: "\(currentKeyword)"
 
-CRITICAL: Each completion MUST embody the concept of "\(keyword)" but should NOT simply repeat the exact word "\(keyword)". Use related words, synonyms, or ways to express the same concept naturally in the sentence.
+CONTEXT: The full keyword path shows the user's refined intent through multiple levels of exploration.
+- All previous keywords (\(refinementKeywords.dropLast().joined(separator: ", "))) provide context for what the user is seeking
+- The current keyword "\(currentKeyword)" is the immediate focus to explore
 
-Generate exactly 5 distinct completion options that progressively explore "\(keyword)":
-- Option 1: Shortest, most direct way to convey the "\(keyword)" concept
-- Option 2: Brief but natural expression of the "\(keyword)" idea
-- Option 3: Balanced completion expressing "\(keyword)" concept (DEFAULT)
-- Option 4: Detailed completion emphasizing the "\(keyword)" theme
-- Option 5: Most comprehensive completion deeply exploring "\(keyword)" meaning
+CRITICAL: Each completion MUST embody the concept of "\(currentKeyword)" within the broader context of the keyword chain, but should NOT simply repeat the exact word "\(currentKeyword)".
+Use related words, synonyms, or ways to express the same concept naturally in the sentence.
+
+Generate exactly 5 distinct completion options that progressively explore "\(currentKeyword)" in the context of "\(keywordChain)":
+The 5 options should further find the goal of the user based on their keyword exploration path.
+- Option 1: Shortest, most direct way to convey the "\(currentKeyword)" concept
+- Option 2: Brief but natural expression of the "\(currentKeyword)" idea
+- Option 3: Balanced completion expressing "\(currentKeyword)" concept (DEFAULT)
+- Option 4: Detailed completion emphasizing the "\(currentKeyword)" theme
+- Option 5: Most comprehensive completion deeply exploring "\(currentKeyword)" meaning
 
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
 2. Your completion MUST flow naturally from the EXACT LAST WORDS in the input text
-3. DO NOT use the exact word "\(keyword)" in your completions - use synonyms, related terms, or natural expressions of the concept
-4. Handle spacing correctly - this is CRITICAL:
+3. DO NOT use the exact word "\(currentKeyword)" in your completions - use synonyms, related terms, or natural expressions of the concept
+4. Consider the full keyword path (\(keywordChain)) when crafting completions - the earlier keywords inform the direction and intent
+5. LANGUAGE MATCHING: Generate keywords in the SAME LANGUAGE as the input context text
+   - If input is in English, keywords must be in English
+   - If input is in French, keywords must be in French
+   - If input is in Spanish, keywords must be in Spanish
+   - Match the language naturally - this is critical for user experience
+6. Handle spacing correctly - this is CRITICAL:
    - If input ends with a space (e.g., "Sure, " or "I need to "), DO NOT add another space - start directly with the word
    - If input ends WITHOUT a space (e.g., "The software" or "Hello"), add a space before your completion
    - Examples:
@@ -89,37 +105,40 @@ CRITICAL RULES:
      * Input "I need to " (ends with space) → "finish" NOT " finish"
      * Input "The software" (no space) → " includes" (with space)
      * Input "Hello" (no space) → " there" (with space)
-5. SPECIAL CASE - Single character input:
+7. SPECIAL CASE - Single character input:
    - If input is just one letter (e.g., "I" or "T"), complete it into a full word first
    - Example: Input "I" → " need to..." or " am working on..." or " believe that..."
    - Example: Input "T" → "he project is..." or "oday I will..." or "his will help..."
-6. Each completion MUST clearly embody the "\(keyword)" concept through meaning, not by repeating the word
-7. Make the "\(keyword)" concept the central focus through natural language
-8. Do NOT greet, ask questions, or treat this as conversation
-9. Keep each under 80 tokens
-10. Make them meaningfully different in how they express the "\(keyword)" idea
-11. Match the tone and style of the input
-12. The completion should read smoothly when appended directly to the input text
+8. Each completion MUST clearly embody the "\(currentKeyword)" concept through meaning, informed by the full path
+9. Make the "\(currentKeyword)" concept the central focus through natural language
+10. Do NOT greet, ask questions, or treat this as conversation
+11. Keep each under 80 tokens
+12. Make them meaningfully different in how they express the "\(currentKeyword)" idea within the broader context
+13. Match the tone and style of the input
+14. The completion should read smoothly when appended directly to the input text
 
-Examples of refinement (note how completions express the concept WITHOUT repeating the exact keyword):
+Examples of refinement with keyword chains (note how completions express the concept WITHOUT repeating the exact keyword):
 
-Input: "I need to"
-Selected keyword: "deadline"
-Refined options expressing DEADLINE concept without using the word "deadline":
-1. keyword: "urgent", text: " finish this by end of day."
-2. keyword: "due date", text: " complete the project by Friday."
-3. keyword: "time constraint", text: " get this done before the client meeting next week."
-4. keyword: "pressing timeline", text: " prioritize tasks since several things are due this month."
-5. keyword: "tight schedule", text: " work efficiently because everything needs to be done and reviewed by Thursday at 3 PM."
+Example 1 - Single level:
+Input: "I need to "
+Keyword chain: "deadline"
+Refined options expressing DEADLINE concept:
+1. keyword: "urgent", text: "finish this by end of day."
+2. keyword: "due date", text: "complete the project by Friday."
+3. keyword: "time constraint", text: "get this done before the client meeting next week."
+4. keyword: "pressing timeline", text: "prioritize tasks since several things are due this month."
+5. keyword: "tight schedule", text: "work efficiently because everything needs to be done and reviewed by Thursday at 3 PM."
 
-Input: "The software update"
-Selected keyword: "new features"
-Refined options expressing NEW FEATURES concept without repeating those exact words:
-1. keyword: "additions", text: " includes several improvements."
-2. keyword: "enhancements", text: " brings exciting capabilities and refinements."
-3. keyword: "innovations", text: " introduces dark mode, voice commands, and enhanced workflows."
-4. keyword: "expanded suite", text: " delivers AI assistance, collaborative editing, and advanced analytics."
-5. keyword: "comprehensive", text: " provides real-time collaboration, intelligent auto-complete, customizable workflows, reporting dashboards, and third-party integrations."
+Example 2 - Multi-level drill-down:
+Input: "I need to "
+Keyword chain: "project > deadline > urgent"
+Context: User first selected "project", then "deadline", now exploring "urgent"
+Refined options expressing URGENT concept in context of project deadlines:
+1. keyword: "immediate", text: "complete the critical path items today."
+2. keyword: "priority", text: "focus on the high-impact deliverables that block other teams."
+3. keyword: "time-sensitive", text: "finish the MVP features before tomorrow's stakeholder demo."
+4. keyword: "critical path", text: "resolve the blocking bugs and deploy the hotfix by end of business today."
+5. keyword: "emergency mode", text: "coordinate with the team to parallelize work streams and hit tonight's production cutoff."
 """
         } else {
             systemPrompt = """
@@ -136,7 +155,12 @@ Generate exactly 5 distinct completion options as variations of how to continue 
 CRITICAL RULES:
 1. Output ONLY the continuation/completion - never repeat the input
 2. Your completion MUST flow naturally from the EXACT LAST WORDS in the input text
-3. Handle spacing correctly - this is CRITICAL:
+3. LANGUAGE MATCHING: Generate keywords and completions in the SAME LANGUAGE as the input context text
+   - If input is in English, keywords and completions must be in English
+   - If input is in French, keywords and completions must be in French
+   - If input is in Spanish, keywords and completions must be in Spanish
+   - Match the language naturally - this is critical for user experience
+4. Handle spacing correctly - this is CRITICAL:
    - If input ends with a space (e.g., "Sure, " or "I need to "), DO NOT add another space - start directly with the word
    - If input ends WITHOUT a space (e.g., "The software" or "Hello"), add a space before your completion
    - Examples:
@@ -144,22 +168,22 @@ CRITICAL RULES:
      * Input "I need to " (ends with space) → "finish" NOT " finish"
      * Input "The software" (no space) → " includes" (with space)
      * Input "Hello" (no space) → " there" (with space)
-4. SPECIAL CASE - Single character input:
+5. SPECIAL CASE - Single character input:
    - If input is just one letter (e.g., "I" or "T"), complete it into a full word first
    - Example: Input "I" → " need to..." or " am working on..." or " believe that..."
    - Example: Input "T" → "he project is..." or "oday I will..." or "his will help..."
-5. Each completion should be ONE clear sentence or phrase
-6. Do NOT greet, ask questions, or treat this as conversation
-7. Keep each under 80 tokens
-8. Make them meaningfully different from each other
-9. Match the tone and style of the input
-10. The completion should read smoothly when appended directly to the input text
+6. Each completion should be ONE clear sentence or phrase
+7. Do NOT greet, ask questions, or treat this as conversation
+8. Keep each under 80 tokens
+9. Make them meaningfully different from each other
+10. Match the tone and style of the input
+11. The completion should read smoothly when appended directly to the input text
 """
         }
 
         // Add examples and formatting instructions if not in refinement mode
         let fullSystemPrompt: String
-        if refinementKeyword == nil {
+        if refinementKeywords.isEmpty {
             fullSystemPrompt = systemPrompt + """
 
 Examples:
@@ -259,8 +283,8 @@ Return as JSON with this structure:
         print("🤖 ===== LLM REQUEST =====")
         print("Model: \(model)")
         print("Context: \"\(context)\"")
-        if let keyword = refinementKeyword {
-            print("Refinement Keyword: \"\(keyword)\"")
+        if !refinementKeywords.isEmpty {
+            print("Refinement Keywords: \(refinementKeywords.joined(separator: " > "))")
         }
         print("System Prompt Preview: \(String(fullSystemPrompt.prefix(200)))...")
         print("========================")

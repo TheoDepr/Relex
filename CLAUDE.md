@@ -50,7 +50,8 @@ The app follows an MVVM architecture with a central coordinator pattern:
 - **CompletionService**: OpenAI API integration for text completions
   - Uses gpt-4o-mini model with structured JSON output
   - Returns 5 completion options with keywords and text (short to expansive)
-  - Supports refinement mode for drill-down keyword exploration
+  - Supports refinement mode for drill-down keyword exploration with full keyword chain context
+  - Passes complete keyword path to LLM when drilling down (e.g., "project > deadline > urgent")
   - Handles API key storage via UserDefaults
 - **OverlayWindowManager**: Manages floating completion overlay window (NSPanel)
   - Creates borderless, non-activating panel positioned near cursor
@@ -128,9 +129,11 @@ CompletionService system prompt instructs the model to:
 - Uses structured JSON output via `response_format` with strict schema validation
 
 **Refinement Mode**: When drilling down with a selected keyword, the system prompt changes to:
-- Focus all 5 options on exploring different aspects of the selected keyword
+- Receives the full keyword chain path (e.g., "project > deadline > urgent") for context
+- Focus all 5 options on exploring different aspects of the current keyword
+- Earlier keywords in the chain inform the LLM about user's exploration direction and intent
 - Maintains short-to-expansive gradient within the keyword theme
-- Enables iterative exploration of completion concepts
+- Enables iterative exploration of completion concepts with accumulated context
 
 ### Hotkey Mappings
 
