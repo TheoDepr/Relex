@@ -15,6 +15,7 @@ class OverlayWindowManager: ObservableObject {
     private let viewModel: OverlayViewModel
     private var globalKeyMonitor: Any?
     private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
 
     init(viewModel: OverlayViewModel) {
         self.viewModel = viewModel
@@ -23,7 +24,11 @@ class OverlayWindowManager: ObservableObject {
     func showOverlay() {
         print("🪟 OverlayWindowManager: showOverlay called")
 
-        // Disable old event tap first, then close window
+        // Clean up old event tap first, then close window
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            runLoopSource = nil
+        }
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
             CFMachPortInvalidate(tap)
@@ -108,25 +113,43 @@ class OverlayWindowManager: ObservableObject {
 
     func hideOverlay() {
         print("🪟 OverlayWindowManager: hideOverlay called")
+
+        // IMPORTANT: Remove event tap from run loop FIRST and ensure it's fully cleaned up
+        // This ensures voice recording can work immediately after overlay is hidden
+        if let source = runLoopSource {
+            print("🗑️ Removing overlay event tap from run loop...")
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            runLoopSource = nil
+            print("🗑️ Removed event tap from run loop")
+        }
+
+        if let tap = eventTap {
+            print("🗑️ Disabling and invalidating overlay event tap...")
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+            eventTap = nil
+            print("✅ Overlay event tap fully removed - voice recording should work now")
+        }
+
         overlayWindow?.close()
         overlayWindow = nil
 
-        // Disable event tap when hiding
+        print("✅ Overlay window fully hidden and cleaned up")
+    }
+
+    private func setupEventTap() {
+        // Clean up old tap if exists
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            runLoopSource = nil
+        }
         if let tap = eventTap {
             CGEvent.tapEnable(tap: tap, enable: false)
             CFMachPortInvalidate(tap)
             eventTap = nil
-            print("🗑️ Event tap removed")
-        }
-    }
-
-    private func setupEventTap() {
-        // Disable old tap if exists
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
         }
 
+        // Only listen to keyDown events, NOT flagsChanged (to avoid interfering with voice recording)
         let eventMask = (1 << CGEventType.keyDown.rawValue)
 
         guard let tap = CGEvent.tapCreate(
@@ -139,10 +162,15 @@ class OverlayWindowManager: ObservableObject {
 
                 let manager = Unmanaged<OverlayWindowManager>.fromOpaque(refcon).takeUnretainedValue()
 
+                // Only process keyDown events (ignore any flagsChanged that might slip through)
+                guard type == .keyDown else {
+                    return Unmanaged.passRetained(event)
+                }
+
                 let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
                 let flags = event.flags
 
-                print("🎹 Event tap - keyCode: \(keyCode), flags: \(flags)")
+                print("🎹 Overlay event tap - keyCode: \(keyCode), flags: \(flags)")
 
                 // Check for Option + J (keyCode 38) to scroll down
                 if flags.contains(.maskAlternate) && keyCode == 38 {
@@ -230,12 +258,18 @@ class OverlayWindowManager: ObservableObject {
             return
         }
 
-        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            print("❌ Failed to create run loop source")
+            CFMachPortInvalidate(tap)
+            return
+        }
+
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
 
         eventTap = tap
-        print("✅ Event tap created and enabled")
+        runLoopSource = source
+        print("✅ Overlay event tap created and enabled (keyDown only)")
     }
 
     private func getCenterPosition() -> CGPoint {

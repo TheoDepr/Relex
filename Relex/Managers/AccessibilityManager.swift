@@ -194,14 +194,20 @@ class AccessibilityManager: ObservableObject {
 
             print("📱 Focused app: \(focusedApp.localizedName ?? "unknown")")
 
-            // Check if this is a web browser (they don't support AX text insertion well)
+            // Check if this is a web browser or Electron app (they don't support AX text insertion well)
             let browserBundleIds = ["com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox",
                                    "com.microsoft.edgemac", "com.brave.Browser", "com.operasoftware.Opera"]
-            let isBrowser = browserBundleIds.contains(focusedApp.bundleIdentifier ?? "")
+            let electronAppBundleIds = ["com.todesktop.230313mzl4w4u92", "com.cursor.app"]  // Cursor and other Electron apps
+            let requiresClipboardPaste = browserBundleIds.contains(focusedApp.bundleIdentifier ?? "") ||
+                                        electronAppBundleIds.contains(focusedApp.bundleIdentifier ?? "")
 
-            if isBrowser {
-                print("🌐 Detected web browser, using typing method")
-                return simulateTyping(text)
+            if requiresClipboardPaste {
+                print("🌐 Detected browser or Electron app")
+                print("🌐 App bundle ID: \(focusedApp.bundleIdentifier ?? "unknown")")
+                print("🌐 App name: \(focusedApp.localizedName ?? "unknown")")
+                print("🌐 Using clipboard paste method")
+                print("🌐 Text to insert: \"\(text.prefix(50))...\"")
+                return pasteUsingClipboard(text)
             }
 
             let appElement = AXUIElementCreateApplication(focusedApp.processIdentifier)
@@ -230,31 +236,43 @@ class AccessibilityManager: ObservableObject {
             return true
         }
 
-        // Fallback: simulate typing (works for most apps)
-        print("⚠️ AX API failed, falling back to simulateTyping")
-        return simulateTyping(text)
+        // Fallback: use clipboard paste (fast and works for most apps)
+        print("⚠️ AX API failed, falling back to clipboard paste")
+        return pasteUsingClipboard(text)
     }
 
     private func pasteUsingClipboard(_ text: String) -> Bool {
         print("📋 pasteUsingClipboard called with text length: \(text.count)")
+        print("📋 Text to paste: \"\(text.prefix(100))\"")
 
-        // Save current clipboard content as strings (not items)
+        // Get pasteboard and save original content
         let pasteboard = NSPasteboard.general
         let originalString = pasteboard.string(forType: .string)
-        let originalTypes = pasteboard.types ?? []
-        print("📋 Original clipboard: \(originalString?.prefix(50) ?? "nil")")
+        print("📋 Original clipboard: \"\(originalString?.prefix(50) ?? "empty")\"")
 
-        // Set text to clipboard
+        // Clear and set new text to clipboard
         pasteboard.clearContents()
         let success = pasteboard.setString(text, forType: .string)
         print("📋 Clipboard set success: \(success)")
 
+        if !success {
+            print("❌ Failed to set clipboard")
+            return false
+        }
+
         // Verify it's in clipboard
         let verifyClipboard = pasteboard.string(forType: .string)
-        print("📋 Verified clipboard content: \(verifyClipboard?.prefix(50) ?? "nil")")
+        print("📋 Verified clipboard content: \"\(verifyClipboard?.prefix(100) ?? "EMPTY")\"")
 
-        // Small delay to ensure clipboard is set
-        usleep(150_000) // 150ms
+        guard verifyClipboard == text else {
+            print("❌ Clipboard verification failed!")
+            print("❌ Expected: \"\(text.prefix(50))\"")
+            print("❌ Got: \"\(verifyClipboard?.prefix(50) ?? "nil")\"")
+            return false
+        }
+
+        // Small delay to ensure clipboard is fully set system-wide
+        usleep(100_000) // 100ms
 
         // Use CGEventPost with different approach - create events with correct timing
         let source = CGEventSource(stateID: .combinedSessionState)
@@ -296,15 +314,19 @@ class AccessibilityManager: ObservableObject {
         print("📋 Posting Cmd up")
         cmdUp.post(tap: .cghidEventTap)
 
-        // Wait for paste to complete
-        usleep(300_000) // 300ms
-        print("📋 Paste completed")
+        print("✅ Paste command sent, now waiting for paste to complete...")
 
-        // Restore original clipboard content (only if it was a simple string)
-        if let originalString = originalString, originalTypes.contains(.string) {
-            pasteboard.clearContents()
-            pasteboard.setString(originalString, forType: .string)
-            print("📋 Restored original clipboard")
+        // Schedule clipboard restoration on main thread after delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [originalString] in
+            let pb = NSPasteboard.general
+            if let original = originalString {
+                pb.clearContents()
+                pb.setString(original, forType: .string)
+                print("📋 Restored original clipboard after 1 second delay")
+            } else {
+                pb.clearContents()
+                print("📋 Cleared clipboard after 1 second delay")
+            }
         }
 
         return true

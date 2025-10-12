@@ -161,9 +161,10 @@ class HotkeyManager {
 
         // Disable old tap if exists
         if let tap = eventTap {
-            print("🔧 Disabling existing event tap")
+            print("🔧 Disabling existing HotkeyManager event tap")
             CGEvent.tapEnable(tap: tap, enable: false)
             CFMachPortInvalidate(tap)
+            eventTap = nil
         }
 
         // Monitor flags changed events for modifier keys AND key down for Escape
