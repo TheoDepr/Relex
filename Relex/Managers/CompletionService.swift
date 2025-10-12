@@ -24,8 +24,10 @@ class CompletionService: ObservableObject {
     @Published var isLoading = false
     @Published var lastError: String?
 
+    private let keychainManager = KeychainManager.shared
+
     var apiKey: String {
-        return UserDefaults.standard.string(forKey: "OpenAIAPIKey") ?? ""
+        return keychainManager.getAPIKey()
     }
 
     private let apiURL = "https://api.openai.com/v1/chat/completions"
@@ -34,8 +36,13 @@ class CompletionService: ObservableObject {
     init() {}
 
     func setAPIKey(_ key: String) {
-        UserDefaults.standard.set(key, forKey: "OpenAIAPIKey")
-        objectWillChange.send()
+        do {
+            try keychainManager.setAPIKey(key)
+            objectWillChange.send()
+        } catch {
+            print("❌ Failed to save API key: \(error.localizedDescription)")
+            lastError = "Failed to save API key: \(error.localizedDescription)"
+        }
     }
 
     func generateCompletions(context: String, refinementKeywords: [String] = []) async throws -> [CompletionOption] {

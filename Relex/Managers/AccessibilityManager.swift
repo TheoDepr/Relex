@@ -22,11 +22,27 @@ class AccessibilityManager: ObservableObject {
         Task { @MainActor in
             checkAccessibility()
             startMonitoringPermissions()
+            setupAppActivationMonitoring()
         }
     }
 
     deinit {
         permissionCheckTimer?.invalidate()
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    private func setupAppActivationMonitoring() {
+        // Monitor when app becomes active to immediately recheck permissions
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor [weak self] in
+                self?.checkAccessibility()
+            }
+        }
     }
 
     func checkAccessibility() {

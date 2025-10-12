@@ -15,10 +15,10 @@ class TranscriptionService: ObservableObject {
 
     private let apiURL = "https://api.openai.com/v1/audio/transcriptions"
     private let model = "whisper-1"
+    private let keychainManager = KeychainManager.shared
 
-    // Reuse API key from UserDefaults (same as CompletionService)
     var apiKey: String {
-        return UserDefaults.standard.string(forKey: "OpenAIAPIKey") ?? ""
+        return keychainManager.getAPIKey()
     }
 
     func transcribe(audioFileURL: URL, context: String?) async throws -> String {

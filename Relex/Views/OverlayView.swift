@@ -478,7 +478,7 @@ struct CompletionOptionRow: View {
                 .frame(width: 10, height: 10)
                 .scaleEffect(animationScale)
                 .opacity(animationOpacity)
-                .onChange(of: isLoading) { newValue in
+                .onChange(of: isLoading) { _, newValue in
                     if newValue {
                         // Calculate delay: middle (3) starts first, then 2/4, then 1/5
                         let delayForRow: Double

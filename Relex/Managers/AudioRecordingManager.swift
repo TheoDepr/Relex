@@ -8,6 +8,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import AppKit
 
 @MainActor
 class AudioRecordingManager: NSObject, ObservableObject {
@@ -26,6 +27,33 @@ class AudioRecordingManager: NSObject, ObservableObject {
     override init() {
         super.init()
         checkMicrophonePermission()
+        setupPermissionMonitoring()
+    }
+
+    private func setupPermissionMonitoring() {
+        // Monitor when app becomes active to recheck permissions
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                self.checkMicrophonePermission()
+            }
+        }
+
+        // Also poll periodically in case the user grants permission while app is in foreground
+        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor in
+                self.checkMicrophonePermission()
+            }
+        }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
     func checkMicrophonePermission() {
@@ -133,8 +161,9 @@ class AudioRecordingManager: NSObject, ObservableObject {
     }
 
     private func startAudioLevelMonitoring() {
-        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { @Sendable [weak self] _ in
-            Task { @MainActor in
+        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor [weak self] in
                 guard let self = self, let recorder = self.audioRecorder else { return }
 
                 recorder.updateMeters()
@@ -148,8 +177,9 @@ class AudioRecordingManager: NSObject, ObservableObject {
     }
 
     private func startDurationTimer() {
-        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { @Sendable [weak self] _ in
-            Task { @MainActor in
+        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+            Task { @MainActor [weak self] in
                 guard let self = self, let startTime = self.recordingStartTime else { return }
                 self.recordingDuration = Date().timeIntervalSince(startTime)
             }

@@ -277,18 +277,14 @@ struct WaveformBar: View {
         let normalizedIndex = Float(index) / Float(totalBars)
         let centerDistance = abs(normalizedIndex - 0.5) * 2 // 0 at center, 1 at edges
 
-        // Create wave effect with randomness - bars in middle are taller
+        // Create wave effect - bars in middle are taller
         let baseHeight: CGFloat = 3
         let waveMultiplier = 1.0 - CGFloat(centerDistance * 0.7)
-
-        // Add pseudo-random variation based on index
-        let seed = sin(Double(index) * 2.7) * 0.5 + 0.5 // 0.0 to 1.0
-        //let randomVariation = CGFloat(seed) * 0.4 + 0.8 // 0.8 to 1.2
 
         let audioMultiplier = CGFloat(audioLevel) * 0.8 + 0.2 // Min 0.2, max 1.0
         let height = baseHeight + (24 * waveMultiplier * audioMultiplier)
 
-        RoundedRectangle(cornerRadius: 1.5)
+        return RoundedRectangle(cornerRadius: 1.5)
             .fill(
                 LinearGradient(
                     colors: [.red, .blue],

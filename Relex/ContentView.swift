@@ -146,6 +146,9 @@ struct ContentView: View {
             )
         }
         .onAppear {
+            // Migrate API key from UserDefaults to Keychain if needed
+            KeychainManager.shared.migrateFromUserDefaults()
+
             accessibilityManager.checkAccessibility()
             audioRecordingManager.checkMicrophonePermission()
             // Load existing API key if present

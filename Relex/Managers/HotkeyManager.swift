@@ -11,17 +11,110 @@ class HotkeyManager {
     private var isRightOptionPressed = false
     private var lastRightOptionEventTime: TimeInterval = 0
     private let debounceInterval: TimeInterval = 0.1 // 100ms debounce
+    private var eventTapMonitorTimer: Timer?
+
+    init() {
+        // Start a periodic check to ensure event tap is active
+        startEventTapMonitoring()
+
+        // Monitor when app becomes active to reinitialize event tap
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Silently check if event tap needs initialization (early exits if already exists)
+            self?.reinitializeEventTapIfNeeded()
+        }
+
+        // Also monitor when app finishes launching
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didFinishLaunchingNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            // Delay slightly to ensure everything is initialized
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self?.reinitializeEventTapIfNeeded()
+            }
+        }
+    }
 
     func startListening() {
         print("🎯 HotkeyManager.startListening() called")
 
-        // Start Option+0 hotkey
+        // Check if accessibility is granted
+        let hasAccessibility = AXIsProcessTrusted()
+        print("🔐 Accessibility permission status in HotkeyManager: \(hasAccessibility)")
+
+        // Start Option+J hotkey (works without accessibility)
         setupOptionZeroHotkey()
 
-        // Start Right Option key monitoring
-        setupRightOptionMonitoring()
+        // Start Right Option key monitoring (requires accessibility)
+        if hasAccessibility {
+            setupRightOptionMonitoring()
+        } else {
+            print("⚠️ Skipping Right Option monitoring - accessibility permission not granted")
+            print("💡 Event tap will be initialized when accessibility permission is granted")
+        }
 
         print("🎯 HotkeyManager.startListening() completed")
+    }
+
+    private func reinitializeEventTapIfNeeded() {
+        // Early exit if event tap already exists - no need to check
+        if eventTap != nil {
+            return
+        }
+
+        // Only check accessibility if event tap is missing
+        let hasAccessibility = AXIsProcessTrusted()
+
+        // If we have accessibility but no event tap, set it up
+        if hasAccessibility {
+            print("🔄 Reinitializing event tap (accessibility now available)")
+            setupRightOptionMonitoring()
+        }
+    }
+
+    // Public method to force reinitialize (can be called from UI after permission granted)
+    func forceReinitializeEventTap() {
+        print("🔧 Force reinitializing event tap")
+
+        // Clean up existing tap if any
+        if let tap = eventTap {
+            print("🗑️ Cleaning up existing event tap")
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+            eventTap = nil
+        }
+
+        // Try to set up again
+        let hasAccessibility = AXIsProcessTrusted()
+        if hasAccessibility {
+            print("✅ Accessibility granted - setting up Right Option monitoring")
+            setupRightOptionMonitoring()
+        } else {
+            print("❌ Cannot set up event tap - accessibility permission still not granted")
+        }
+    }
+
+    private func startEventTapMonitoring() {
+        // Check every 10 seconds if event tap needs to be reinitialized
+        // This is only needed when accessibility permission is granted after launch
+        eventTapMonitorTimer = Timer.scheduledTimer(withTimeInterval: 10.0, repeats: true) { [weak self] _ in
+            guard let self = self else { return }
+
+            // If event tap exists, stop monitoring - no longer needed
+            if self.eventTap != nil {
+                print("✅ Event tap established - stopping periodic monitoring")
+                self.eventTapMonitorTimer?.invalidate()
+                self.eventTapMonitorTimer = nil
+                return
+            }
+
+            self.reinitializeEventTapIfNeeded()
+        }
     }
 
     private func setupOptionZeroHotkey() {
@@ -148,17 +241,32 @@ class HotkeyManager {
         guard let tap = tap else {
             print("❌ Failed to create event tap for Right Option - accessibility permission may be required")
             print("❌ Note: Event taps require accessibility permission. Make sure Relex is enabled in System Settings > Privacy & Security > Accessibility")
+
+            // Double-check accessibility status
+            let hasAccessibility = AXIsProcessTrusted()
+            print("❌ Current accessibility status: \(hasAccessibility)")
+
             return
         }
 
         print("🔧 Event tap created successfully")
 
-        let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        // Create run loop source
+        guard let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+            print("❌ Failed to create run loop source")
+            CFMachPortInvalidate(tap)
+            return
+        }
+
+        print("🔧 Adding event tap to run loop")
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+
+        print("🔧 Enabling event tap")
         CGEvent.tapEnable(tap: tap, enable: true)
 
         eventTap = tap
-        print("✅ Right Option key monitoring enabled")
+        print("✅ Right Option key monitoring enabled successfully")
+        print("✅ Event tap is active and listening for Right Option key (keyCode 61)")
     }
 
     func stopListening() {
@@ -178,11 +286,15 @@ class HotkeyManager {
             eventTap = nil
         }
 
+        eventTapMonitorTimer?.invalidate()
+        eventTapMonitorTimer = nil
+
         print("Hotkey manager stopped listening")
     }
 
     deinit {
         stopListening()
+        NotificationCenter.default.removeObserver(self)
     }
 }
 

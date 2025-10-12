@@ -34,9 +34,8 @@ class VoiceOverlayWindowManager {
             return
         }
 
-        // Create the hosting view and get its natural size
+        // Create the hosting view
         let hostingView = NSHostingView(rootView: contentView)
-        let naturalSize = hostingView.fittingSize
 
         // Size for the overlay (smaller for minimalistic design)
         let overlayWidth: CGFloat = 224 // 200 + padding
