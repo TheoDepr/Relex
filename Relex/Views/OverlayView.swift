@@ -170,12 +170,41 @@ class OverlayViewModel: ObservableObject {
             error = accessibilityManager.lastError ?? "Failed to capture text"
             print("❌ Failed to capture text: \(accessibilityManager.lastError ?? "unknown error")")
             isLoading = false
+
+            // Auto-hide error after 2 seconds
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await MainActor.run { [weak self] in
+                    self?.hide()
+                    self?.windowManager?.hideOverlay()
+                }
+            }
             return
         }
 
         print("📝 Captured text from input field:")
         print("Context length: \(context.count) characters")
         print("Context: \"\(context)\"")
+
+        // Warn if context is empty or very short
+        if context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            error = "No text found - cursor must be in a text field"
+            print("⚠️ Context is empty")
+            isLoading = false
+
+            // Auto-hide error after 2 seconds
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+                    if self.error == "No text found - cursor must be in a text field" {
+                        self.hide()
+                        self.windowManager?.hideOverlay()
+                    }
+                }
+            }
+            return
+        }
 
         // Request completions
         do {
@@ -193,6 +222,15 @@ class OverlayViewModel: ObservableObject {
                 self.error = "Invalid API key. Please check your OpenAI API key in settings"
             } else {
                 self.error = error.localizedDescription
+            }
+
+            // Auto-hide error after 3 seconds (longer for API errors so user can read)
+            Task {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await MainActor.run { [weak self] in
+                    self?.hide()
+                    self?.windowManager?.hideOverlay()
+                }
             }
         }
 

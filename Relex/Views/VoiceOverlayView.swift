@@ -41,10 +41,12 @@ class VoiceOverlayViewModel: ObservableObject {
             hide()
         }
 
-        // Capture context from focused element
+        // Capture context from focused element (optional - only used to improve transcription)
         capturedContext = await accessibilityManager.captureTextFromFocusedElement()
-        if let context = capturedContext {
-            print("📝 Captured context: \(context.prefix(100))...")
+        if let context = capturedContext, !context.isEmpty {
+            print("📝 Captured context for transcription hint: \(context.prefix(100))...")
+        } else {
+            print("📝 No context captured (empty field) - transcription will work without hint")
         }
 
         // Show overlay
@@ -127,6 +129,7 @@ class VoiceOverlayViewModel: ObservableObject {
             print("✅ Transcription complete: \"\(transcribedText)\"")
 
             // Insert transcribed text
+            print("📝 Attempting to insert transcribed text: \"\(transcribedText)\"")
             let success = await accessibilityManager.insertText(transcribedText)
 
             if success {
@@ -134,7 +137,9 @@ class VoiceOverlayViewModel: ObservableObject {
                 hide()
                 windowManager?.hideOverlay()
             } else {
-                error = "Failed to insert transcribed text"
+                let errorMsg = accessibilityManager.lastError ?? "Failed to insert text"
+                print("❌ Insert failed: \(errorMsg)")
+                error = "Insert failed: \(errorMsg)"
                 state = .error
 
                 // Auto-hide after showing error briefly
