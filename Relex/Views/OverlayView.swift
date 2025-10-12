@@ -26,6 +26,7 @@ class OverlayViewModel: ObservableObject {
 
     private var refreshTask: Task<Void, Never>?
     private var debounceTask: Task<Void, Never>?
+    private var currentRequestTask: Task<Void, Never>?
 
     init(accessibilityManager: AccessibilityManager, completionService: CompletionService) {
         self.accessibilityManager = accessibilityManager
@@ -62,6 +63,7 @@ class OverlayViewModel: ObservableObject {
         // Cancel any pending refresh tasks
         debounceTask?.cancel()
         refreshTask?.cancel()
+        currentRequestTask?.cancel()
     }
 
     func selectOption(_ index: Int) {
@@ -102,6 +104,15 @@ class OverlayViewModel: ObservableObject {
             return
         }
 
+        // Prevent concurrent requests
+        if isLoading {
+            print("⚠️ Request already in progress, skipping")
+            return
+        }
+
+        // Cancel any existing request
+        currentRequestTask?.cancel()
+
         isLoading = true
         error = nil
 
@@ -132,6 +143,15 @@ class OverlayViewModel: ObservableObject {
     }
 
     func requestCompletion() async {
+        // Prevent concurrent requests
+        if isLoading {
+            print("⚠️ Request already in progress, skipping")
+            return
+        }
+
+        // Cancel any existing request
+        currentRequestTask?.cancel()
+
         isLoading = true
         error = nil
         completions = []
@@ -185,6 +205,11 @@ class OverlayViewModel: ObservableObject {
             return
         }
 
+        guard selectedIndex >= 0 && selectedIndex < completions.count else {
+            print("❌ Invalid selected index: \(selectedIndex)")
+            return
+        }
+
         let selectedCompletion = completions[selectedIndex].text
         print("✍️ Hiding overlay first, then inserting completion \(selectedIndex + 1): \"\(selectedCompletion)\"")
         hide()
@@ -215,6 +240,17 @@ class OverlayViewModel: ObservableObject {
             return
         }
 
+        guard selectedIndex >= 0 && selectedIndex < completions.count else {
+            print("❌ Invalid selected index: \(selectedIndex)")
+            return
+        }
+
+        // Prevent drill-down while already loading
+        if isLoading {
+            print("⚠️ Request already in progress, cannot drill down")
+            return
+        }
+
         let selectedOption = completions[selectedIndex]
         print("🔍 Drilling down into keyword: \"\(selectedOption.keyword)\"")
 
@@ -235,6 +271,9 @@ class OverlayViewModel: ObservableObject {
 
         print("📝 Using fresh context for drill-down: \"\(currentContext)\"")
         contextHistory.append(currentContext)
+
+        // Cancel any existing request before starting a new one
+        currentRequestTask?.cancel()
 
         // Generate refined completions (keep existing completions visible during load)
         isLoading = true

@@ -23,6 +23,13 @@ class OverlayWindowManager: ObservableObject {
     func showOverlay() {
         print("🪟 OverlayWindowManager: showOverlay called")
 
+        // Disable old event tap first, then close window
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+            eventTap = nil
+        }
+
         // Close existing window if any
         overlayWindow?.close()
 
@@ -141,6 +148,7 @@ class OverlayWindowManager: ObservableObject {
                 if flags.contains(.maskAlternate) && keyCode == 38 {
                     print("⌥J pressed - scrolling down")
                     Task { @MainActor in
+                        guard !manager.viewModel.completions.isEmpty else { return }
                         let currentIndex = manager.viewModel.selectedIndex
                         let nextIndex = (currentIndex + 1) % manager.viewModel.completions.count
                         manager.viewModel.selectOption(nextIndex)
@@ -152,6 +160,7 @@ class OverlayWindowManager: ObservableObject {
                 if flags.contains(.maskAlternate) && keyCode == 40 {
                     print("⌥K pressed - scrolling up")
                     Task { @MainActor in
+                        guard !manager.viewModel.completions.isEmpty else { return }
                         let currentIndex = manager.viewModel.selectedIndex
                         let count = manager.viewModel.completions.count
                         let prevIndex = (currentIndex - 1 + count) % count

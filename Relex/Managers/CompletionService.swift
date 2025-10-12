@@ -46,9 +46,7 @@ class CompletionService: ObservableObject {
         lastError = nil
 
         defer {
-            Task { @MainActor in
-                isLoading = false
-            }
+            isLoading = false
         }
 
         // Prepare the request
@@ -60,12 +58,15 @@ class CompletionService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 30.0 // 30 second timeout
 
         // Build system prompt based on whether this is a refinement
         let systemPrompt: String
         if !refinementKeywords.isEmpty {
             let keywordChain = refinementKeywords.joined(separator: " > ")
-            let currentKeyword = refinementKeywords.last!
+            guard let currentKeyword = refinementKeywords.last else {
+                throw CompletionError.invalidKeywordPath
+            }
 
             systemPrompt = """
 You are **ReLex**, an AI text completion assistant like GitHub Copilot or Gmail Smart Compose.
@@ -345,6 +346,8 @@ enum CompletionError: LocalizedError {
     case apiError(statusCode: Int)
     case parsingError
     case insufficientOptions
+    case invalidKeywordPath
+    case timeout
 
     var errorDescription: String? {
         switch self {
@@ -360,6 +363,10 @@ enum CompletionError: LocalizedError {
             return "Failed to parse API response"
         case .insufficientOptions:
             return "API did not return enough completion options"
+        case .invalidKeywordPath:
+            return "Invalid keyword path for refinement"
+        case .timeout:
+            return "Request timed out. Please try again."
         }
     }
 }
