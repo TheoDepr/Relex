@@ -7,6 +7,6 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Relex needs microphone access to transcribe your voice into text using AI-powered speech recognition.</string>
 	<key>LSUIElement</key>
-	<false/>
+	<true/>
 </dict>
 </plist>
