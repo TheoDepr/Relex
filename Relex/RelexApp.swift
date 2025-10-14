@@ -34,7 +34,7 @@ struct RelexApp: App {
     }
 }
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var statusItem: NSStatusItem?
     var settingsWindow: NSWindow?
     var appCoordinator: AppCoordinator!
@@ -74,6 +74,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             window.title = "Relex Settings"
             window.center()
+            window.isReleasedWhenClosed = false
+            window.delegate = self
 
             let contentView = ContentView(
                 accessibilityManager: appCoordinator.accessibilityManager,
@@ -92,6 +94,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func quit() {
         NSApplication.shared.terminate(nil)
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowWillClose(_ notification: Notification) {
+        // Keep the window instance but hide it
+        print("📱 Settings window closed")
     }
 }
 
