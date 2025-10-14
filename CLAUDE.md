@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Relex is a system-wide AI text completion assistant for macOS with voice dictation support. It provides:
+Relex is a system-wide AI text completion assistant for macOS with voice dictation support. It runs as a **menu bar app** (no Dock icon) and provides:
 - **Text Completion**: Triggered via Option+J hotkey, captures context from the active application using Accessibility APIs, requests completions from OpenAI, and displays suggestions in a floating overlay
 - **Voice Dictation**: Hold Right Option key to record, release to transcribe and insert text using OpenAI Whisper
+- **Menu Bar Interface**: Settings accessible via menu bar icon (⚡) in top-right corner
 
 ## Build & Run Commands
 
@@ -30,11 +31,18 @@ The app follows an MVVM architecture with a central coordinator pattern:
 
 ### Core Components
 
+**AppDelegate** (`RelexApp.swift`):
+- Main application delegate managing the menu bar app lifecycle
+- Creates and manages the menu bar status item (⚡ icon)
+- Initializes the AppCoordinator and manages settings window
+- Provides menu actions: Settings and Quit
+
 **AppCoordinator** (`RelexApp.swift`):
 - Central coordinator managing all managers and view models
 - Sets up hotkey listeners and handles notification-based events
 - Bridges between hotkey triggers and overlay display/voice recording
 - Creates dependency graph for all services
+- Initialized by AppDelegate on app launch
 
 **Managers**:
 - **HotkeyManager**: System-wide hotkey registration using Carbon Event Manager
@@ -74,7 +82,10 @@ The app follows an MVVM architecture with a central coordinator pattern:
 - **VoiceOverlayViewModel**: State management for voice recording overlay
 
 **Views**:
-- **ContentView**: Main settings window with permission management and API key configuration
+- **ContentView**: Settings window with permission management and API key configuration
+  - Opened via menu bar Settings menu item
+  - Managed as an NSWindow by AppDelegate
+  - Hosts SwiftUI view with NSHostingView
 - **OverlayView**: SwiftUI view for completion overlay with loading/error/results states
   - Shows 5 completion options with keywords (always fully visible, no truncation)
   - Breadcrumb header showing keyword path and depth level
@@ -114,6 +125,8 @@ The app follows an MVVM architecture with a central coordinator pattern:
 - **App Sandbox**: Disabled (`ENABLE_APP_SANDBOX = NO`) to allow Accessibility APIs
 - **Bundle ID**: Relex.Relex
 - **Xcode Version**: 26.0 (Swift 6 concurrency features enabled)
+- **Menu Bar App**: `INFOPLIST_KEY_LSUIElement = YES` hides Dock icon and makes app menu bar only
+- **Info.plist**: Auto-generated via `GENERATE_INFOPLIST_FILE = YES` with custom keys in build settings
 
 ## Development Notes
 
@@ -157,6 +170,15 @@ Voice Dictation:
 - **Release Right Option**: Stop recording and transcribe
 - **Escape (while recording)**: Cancel recording
 
+### Menu Bar App Structure
+
+Relex runs as a menu bar-only app (no Dock icon):
+- **AppDelegate** initializes on `applicationDidFinishLaunching`
+- **NSStatusItem** created with bolt.fill icon (⚡)
+- **Menu items**: Settings (Cmd+,) and Quit (Cmd+Q)
+- **Settings window**: Manually created NSWindow with NSHostingView wrapping SwiftUI ContentView
+- **LSUIElement = YES**: Configured via `INFOPLIST_KEY_LSUIElement` in build settings to hide from Dock
+
 ### Common Gotchas
 
 - Accessibility permission changes require app restart to take full effect
@@ -167,3 +189,4 @@ Voice Dictation:
 - Keystroke refresh is disabled during drill-down mode to preserve history state
 - Keywords are displayed with full width (no truncation) for better readability
 - Loading overlay maintains completions visibility during refinement to avoid jarring UX
+- Menu bar apps require `LSUIElement = YES` to hide Dock icon (set via build settings, not Info.plist directly)

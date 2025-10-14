@@ -12,7 +12,7 @@ import AppKit
 
 @main
 struct RelexApp: App {
-    @StateObject private var appCoordinator = AppCoordinator()
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     init() {
         // Check accessibility permissions on launch (without prompt)
@@ -28,14 +28,79 @@ struct RelexApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
-            ContentView(
+        Settings {
+            EmptyView()
+        }
+    }
+}
+
+class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
+    var statusItem: NSStatusItem?
+    var settingsWindow: NSWindow?
+    var appCoordinator: AppCoordinator!
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Initialize the app coordinator
+        appCoordinator = AppCoordinator()
+
+        // Create menu bar icon
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+
+        if let button = statusItem?.button {
+            button.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Relex")
+        }
+
+        // Create menu
+        let menu = NSMenu()
+        menu.addItem(NSMenuItem(title: "Settings...", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(NSMenuItem(title: "Quit Relex", action: #selector(quit), keyEquivalent: "q"))
+
+        statusItem?.menu = menu
+
+        print("📱 Menu bar app initialized")
+    }
+
+    @objc func openSettings() {
+        print("📱 Opening settings window")
+
+        if settingsWindow == nil {
+            // Create settings window if it doesn't exist
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 700, height: 650),
+                styleMask: [.titled, .closable, .miniaturizable],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Relex Settings"
+            window.center()
+            window.isReleasedWhenClosed = false
+            window.delegate = self
+
+            let contentView = ContentView(
                 accessibilityManager: appCoordinator.accessibilityManager,
                 completionService: appCoordinator.completionService,
                 audioRecordingManager: appCoordinator.audioRecordingManager
             )
+            window.contentView = NSHostingView(rootView: contentView)
+
+            settingsWindow = window
         }
-        .defaultSize(width: 700, height: 650)
+
+        NSApp.activate(ignoringOtherApps: true)
+        settingsWindow?.makeKeyAndOrderFront(nil)
+        print("📱 Settings window shown")
+    }
+
+    @objc func quit() {
+        NSApplication.shared.terminate(nil)
+    }
+
+    // MARK: - NSWindowDelegate
+
+    func windowWillClose(_ notification: Notification) {
+        // Keep the window instance but hide it
+        print("📱 Settings window closed")
     }
 }
 
