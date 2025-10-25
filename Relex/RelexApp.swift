@@ -67,7 +67,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         if settingsWindow == nil {
             // Create settings window if it doesn't exist
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 700, height: 650),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 620),
                 styleMask: [.titled, .closable, .miniaturizable],
                 backing: .buffered,
                 defer: false
@@ -79,8 +79,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
             let contentView = ContentView(
                 accessibilityManager: appCoordinator.accessibilityManager,
-                completionService: appCoordinator.completionService,
-                audioRecordingManager: appCoordinator.audioRecordingManager
+                audioRecordingManager: appCoordinator.audioRecordingManager,
+                transcriptionService: appCoordinator.transcriptionService
             )
             window.contentView = NSHostingView(rootView: contentView)
 
@@ -107,11 +107,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 @MainActor
 class AppCoordinator: ObservableObject {
     let accessibilityManager = AccessibilityManager()
-    let completionService = CompletionService()
-    let overlayViewModel: OverlayViewModel
-    let overlayWindowManager: OverlayWindowManager
-
-    // Voice recording components
     let audioRecordingManager = AudioRecordingManager()
     let transcriptionService = TranscriptionService()
     let voiceOverlayViewModel: VoiceOverlayViewModel
@@ -120,14 +115,6 @@ class AppCoordinator: ObservableObject {
     private let hotkeyManager = HotkeyManager.shared
 
     init() {
-        // Initialize text completion overlay
-        self.overlayViewModel = OverlayViewModel(
-            accessibilityManager: accessibilityManager,
-            completionService: completionService
-        )
-        self.overlayWindowManager = OverlayWindowManager(viewModel: overlayViewModel)
-        self.overlayViewModel.windowManager = self.overlayWindowManager
-
         // Initialize voice recording overlay
         self.voiceOverlayViewModel = VoiceOverlayViewModel(
             audioRecordingManager: audioRecordingManager,
@@ -140,45 +127,8 @@ class AppCoordinator: ObservableObject {
         )
         self.voiceOverlayViewModel.windowManager = self.voiceOverlayWindowManager
 
-        // Setup hotkey listeners
-        setupHotkeyListener()
+        // Setup voice recording listener
         setupVoiceRecordingListener()
-    }
-
-    private func setupHotkeyListener() {
-        print("📱 AppCoordinator: Setting up hotkey listener")
-        hotkeyManager.startListening()
-        print("📱 AppCoordinator: Hotkey manager started")
-
-        // Listen for hotkey notifications
-        NotificationCenter.default.addObserver(
-            forName: .relexHotkeyTriggered,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            print("📩 AppCoordinator: Received hotkey notification")
-            guard let self = self else { return }
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                self.handleHotkeyPressed()
-            }
-        }
-    }
-
-    nonisolated private func handleHotkeyPressed() {
-        print("🎯 AppCoordinator: Handling hotkey press")
-        Task { @MainActor in
-            if overlayViewModel.isVisible {
-                print("👋 Hiding overlay")
-                overlayViewModel.hide()
-                overlayWindowManager.hideOverlay()
-            } else {
-                print("👀 Showing overlay and requesting completion")
-                overlayViewModel.show()
-                overlayWindowManager.showOverlay()
-                await overlayViewModel.requestCompletion()
-            }
-        }
     }
 
     private func setupVoiceRecordingListener() {

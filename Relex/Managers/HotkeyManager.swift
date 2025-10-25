@@ -47,9 +47,6 @@ class HotkeyManager {
         let hasAccessibility = AXIsProcessTrusted()
         print("🔐 Accessibility permission status in HotkeyManager: \(hasAccessibility)")
 
-        // Start Option+J hotkey (works without accessibility)
-        setupOptionZeroHotkey()
-
         // Start Right Option key monitoring (requires accessibility)
         if hasAccessibility {
             setupRightOptionMonitoring()
@@ -117,45 +114,6 @@ class HotkeyManager {
         }
     }
 
-    private func setupOptionZeroHotkey() {
-        print("🔧 Setting up Option+J hotkey...")
-        // Use Carbon Event Manager for system-wide hotkey registration
-        // This works even in text fields because it's registered at system level
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-
-        let status = InstallEventHandler(GetApplicationEventTarget(), { (nextHandler, event, userData) -> OSStatus in
-            guard let userData = userData else { return OSStatus(eventNotHandledErr) }
-
-            _ = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-
-            print("🔥 Hotkey triggered: Option + J")
-            NotificationCenter.default.post(name: .relexHotkeyTriggered, object: nil)
-
-            return noErr
-        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-
-        if status != noErr {
-            print("❌ Failed to install event handler: \(status)")
-            return
-        }
-
-        // Register Option + J (keyCode 38 for 'j', optionKey modifier)
-        let registerStatus = RegisterEventHotKey(
-            38, // keyCode for 'j'
-            UInt32(optionKey), // Option modifier
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-
-        if registerStatus == noErr {
-            print("✅ Hotkey registered: Option + J (system-wide)")
-        } else {
-            print("❌ Failed to register hotkey: \(registerStatus)")
-        }
-    }
-
     private func setupRightOptionMonitoring() {
         print("🔧 Setting up Right Option monitoring...")
 
@@ -189,9 +147,12 @@ class HotkeyManager {
                 // Handle key down events (for Escape)
                 if eventType == .keyDown {
                     // Escape key code is 53
-                    if keyCode == 53 && manager.isRightOptionPressed {
-                        print("⎋ Escape pressed during recording - canceling")
-                        manager.isRightOptionPressed = false
+                    if keyCode == 53 {
+                        // Cancel voice recording/transcription at any stage
+                        print("⎋ Escape pressed - canceling voice operation")
+                        if manager.isRightOptionPressed {
+                            manager.isRightOptionPressed = false
+                        }
                         NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
                         return nil // Consume the escape key
                     }
@@ -311,7 +272,6 @@ extension String {
 }
 
 extension Notification.Name {
-    static let relexHotkeyTriggered = Notification.Name("relexHotkeyTriggered")
     static let voiceRecordingStarted = Notification.Name("voiceRecordingStarted")
     static let voiceRecordingStopped = Notification.Name("voiceRecordingStopped")
     static let voiceRecordingCanceled = Notification.Name("voiceRecordingCanceled")

@@ -9,22 +9,21 @@ import SwiftUI
 
 struct ContentView: View {
     @ObservedObject var accessibilityManager: AccessibilityManager
-    @ObservedObject var completionService: CompletionService
     @ObservedObject var audioRecordingManager: AudioRecordingManager
+    @ObservedObject var transcriptionService: TranscriptionService
 
     @State private var apiKey: String = ""
     @State private var showAPIKeyInput = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
+        VStack(spacing: 20) {
                 // Header
                 VStack(spacing: 4) {
                     Text("Relex")
                         .font(.system(size: 28, weight: .semibold, design: .default))
                         .tracking(-0.5)
 
-                    Text("AI Text Completion Assistant")
+                    Text("Voice Dictation Assistant")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -67,17 +66,17 @@ struct ContentView: View {
 
                         PermissionRow(
                             icon: "key.fill",
-                            iconColor: !completionService.apiKey.isEmpty ? .green : .orange,
+                            iconColor: !transcriptionService.apiKey.isEmpty ? .green : .orange,
                             title: "OpenAI API Key",
-                            status: !completionService.apiKey.isEmpty,
-                            statusText: !completionService.apiKey.isEmpty ? "Configured" : "Not Set",
-                            buttonText: completionService.apiKey.isEmpty ? "Configure API Key" : "Update API Key",
+                            status: !transcriptionService.apiKey.isEmpty,
+                            statusText: !transcriptionService.apiKey.isEmpty ? "Configured" : "Not Set",
+                            buttonText: transcriptionService.apiKey.isEmpty ? "Configure API Key" : "Update API Key",
                             showButton: true,
-                            secondaryButtonText: completionService.apiKey.isEmpty ? nil : "Remove"
+                            secondaryButtonText: transcriptionService.apiKey.isEmpty ? nil : "Remove"
                         ) {
                             showAPIKeyInput = true
                         } secondaryAction: {
-                            completionService.setAPIKey("")
+                            transcriptionService.setAPIKey("")
                         }
                     }
                     .padding(14)
@@ -91,21 +90,6 @@ struct ContentView: View {
                     SectionHeader(title: "How to Use")
 
                     VStack(alignment: .leading, spacing: 10) {
-                        // Text Completion
-                        InstructionBlock(
-                            title: "Text Completion:",
-                            icon: "text.cursor",
-                            iconColor: .blue,
-                            steps: [
-                                ("1", "Press Option + J in any text field"),
-                                ("2", "Navigate options with Option + J/K"),
-                                ("3", "Drill down with Option + L, back with Option + H"),
-                                ("4", "Accept with Option + F, cancel with Escape")
-                            ]
-                        )
-
-                        Divider()
-
                         // Voice Dictation
                         InstructionBlock(
                             title: "Voice Dictation:",
@@ -115,10 +99,11 @@ struct ContentView: View {
                                 ("1", "Hold Right Option key to start recording"),
                                 ("2", "Speak your text clearly"),
                                 ("3", "Release Right Option to transcribe and insert"),
-                                ("4", "Press Escape while recording to cancel")
+                                ("4", "Press Escape anytime to cancel")
                             ]
                         )
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
                 }
                 .background(Color(nsColor: .controlBackgroundColor))
@@ -132,15 +117,14 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                         .padding(.top, 4)
                 }
-            }
-            .padding(24)
         }
-        .frame(minWidth: 600, idealWidth: 650, minHeight: 600)
+        .padding(24)
+        .frame(minWidth: 480, idealWidth: 480, minHeight: 620)
         .sheet(isPresented: $showAPIKeyInput) {
             APIKeyInputView(
                 apiKey: $apiKey,
                 onSave: {
-                    completionService.setAPIKey(apiKey)
+                    transcriptionService.setAPIKey(apiKey)
                     showAPIKeyInput = false
                 }
             )
@@ -152,12 +136,12 @@ struct ContentView: View {
             accessibilityManager.checkAccessibility()
             audioRecordingManager.checkMicrophonePermission()
             // Load existing API key if present
-            apiKey = completionService.apiKey
+            apiKey = transcriptionService.apiKey
         }
         .onChange(of: showAPIKeyInput) { _, newValue in
             if newValue {
                 // Reload current API key when sheet opens
-                apiKey = completionService.apiKey
+                apiKey = transcriptionService.apiKey
             }
         }
     }
@@ -311,7 +295,7 @@ struct APIKeyInputView: View {
                 Text("Configure OpenAI API Key")
                     .font(.headline)
 
-                Text("This key is required for text completions and voice transcription")
+                Text("This key is required for voice transcription")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -365,7 +349,7 @@ struct APIKeyInputView: View {
 #Preview {
     ContentView(
         accessibilityManager: AccessibilityManager(),
-        completionService: CompletionService(),
-        audioRecordingManager: AudioRecordingManager()
+        audioRecordingManager: AudioRecordingManager(),
+        transcriptionService: TranscriptionService()
     )
 }

@@ -21,6 +21,15 @@ class TranscriptionService: ObservableObject {
         return keychainManager.getAPIKey()
     }
 
+    func setAPIKey(_ key: String) {
+        do {
+            try keychainManager.setAPIKey(key)
+        } catch {
+            print("❌ Failed to save API key: \(error.localizedDescription)")
+            lastError = "Failed to save API key: \(error.localizedDescription)"
+        }
+    }
+
     func transcribe(audioFileURL: URL, context: String?) async throws -> String {
         guard !apiKey.isEmpty else {
             throw TranscriptionError.missingAPIKey
