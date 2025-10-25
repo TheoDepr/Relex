@@ -12,13 +12,28 @@ import Combine
 class TranscriptionService: ObservableObject {
     @Published var isTranscribing = false
     @Published var lastError: String?
+    @Published var selectedModel: WhisperModel {
+        didSet {
+            UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedWhisperModel")
+        }
+    }
 
     private let apiURL = "https://api.openai.com/v1/audio/transcriptions"
-    private let model = "whisper-1"
     private let keychainManager = KeychainManager.shared
+    private let usageTracker = UsageTracker.shared
 
     var apiKey: String {
         return keychainManager.getAPIKey()
+    }
+
+    init() {
+        // Load saved model preference or default to gpt-4o-mini (cheaper)
+        if let savedModel = UserDefaults.standard.string(forKey: "selectedWhisperModel"),
+           let model = WhisperModel(rawValue: savedModel) {
+            self.selectedModel = model
+        } else {
+            self.selectedModel = .gpt4oMini
+        }
     }
 
     func setAPIKey(_ key: String) {
@@ -30,7 +45,7 @@ class TranscriptionService: ObservableObject {
         }
     }
 
-    func transcribe(audioFileURL: URL, context: String?) async throws -> String {
+    func transcribe(audioFileURL: URL, context: String?, durationSeconds: TimeInterval) async throws -> String {
         guard !apiKey.isEmpty else {
             throw TranscriptionError.missingAPIKey
         }
@@ -61,7 +76,7 @@ class TranscriptionService: ObservableObject {
         // Add model parameter
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n".data(using: .utf8)!)
-        body.append("\(model)\r\n".data(using: .utf8)!)
+        body.append("\(selectedModel.rawValue)\r\n".data(using: .utf8)!)
 
         // Add language parameter (optional but helps accuracy)
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
@@ -111,6 +126,9 @@ class TranscriptionService: ObservableObject {
         guard let text = json?["text"] as? String else {
             throw TranscriptionError.parsingError
         }
+
+        // Track usage for cost calculation
+        usageTracker.trackUsage(durationSeconds: durationSeconds, model: selectedModel)
 
         print("✅ Transcription successful: \"\(text)\"")
         return text.trimmingCharacters(in: .whitespacesAndNewlines)

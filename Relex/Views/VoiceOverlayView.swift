@@ -89,7 +89,8 @@ class VoiceOverlayViewModel: ObservableObject {
             print("⏭️ Recording too short (\(String(format: "%.2f", recordedDuration))s), ignoring")
 
             // Stop and cleanup
-            if let audioURL = audioRecordingManager.stopRecording() {
+            let (audioURL, _) = audioRecordingManager.stopRecording()
+            if let audioURL = audioURL {
                 audioRecordingManager.cleanupRecording(at: audioURL)
             }
 
@@ -100,7 +101,8 @@ class VoiceOverlayViewModel: ObservableObject {
         }
 
         // Stop recording
-        guard let audioURL = audioRecordingManager.stopRecording() else {
+        let (audioURL, audioDuration) = audioRecordingManager.stopRecording()
+        guard let audioURL = audioURL else {
             error = "Failed to stop recording"
             state = .error
 
@@ -125,7 +127,8 @@ class VoiceOverlayViewModel: ObservableObject {
             do {
                 let transcribedText = try await transcriptionService.transcribe(
                     audioFileURL: audioURL,
-                    context: capturedContext
+                    context: capturedContext,
+                    durationSeconds: audioDuration
                 )
 
                 // Check if task was cancelled
@@ -214,7 +217,8 @@ class VoiceOverlayViewModel: ObservableObject {
 
         if state == .recording {
             // Cancel recording
-            if let audioURL = audioRecordingManager.stopRecording() {
+            let (audioURL, _) = audioRecordingManager.stopRecording()
+            if let audioURL = audioURL {
                 audioRecordingManager.cleanupRecording(at: audioURL)
             }
         } else if state == .transcribing {

@@ -132,10 +132,10 @@ class AudioRecordingManager: NSObject, ObservableObject {
         }
     }
 
-    func stopRecording() -> URL? {
+    func stopRecording() -> (url: URL?, duration: TimeInterval) {
         guard isRecording, let recorder = audioRecorder else {
             print("⚠️ No active recording to stop")
-            return nil
+            return (nil, 0)
         }
 
         recorder.stop()
@@ -152,12 +152,25 @@ class AudioRecordingManager: NSObject, ObservableObject {
         audioLevel = 0.0
 
         let finalURL = recordingURL
+        let finalDuration = recordingDuration
 
         // Clear recorder reference
         audioRecorder = nil
 
-        print("✅ Stopped recording, duration: \(String(format: "%.1f", recordingDuration))s")
-        return finalURL
+        print("✅ Stopped recording, duration: \(String(format: "%.1f", finalDuration))s")
+        return (finalURL, finalDuration)
+    }
+
+    func getAudioDuration(from url: URL) -> TimeInterval {
+        do {
+            let audioFile = try AVAudioFile(forReading: url)
+            let duration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
+            return duration
+        } catch {
+            print("⚠️ Failed to get audio duration: \(error)")
+            // Fallback to recorded duration if available
+            return recordingDuration
+        }
     }
 
     private func startAudioLevelMonitoring() {

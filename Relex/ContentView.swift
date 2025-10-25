@@ -14,6 +14,8 @@ struct ContentView: View {
 
     @State private var apiKey: String = ""
     @State private var showAPIKeyInput = false
+    @State private var usageStatistics = UsageTracker.shared.getStatistics()
+    @State private var refreshTimer: Timer?
 
     var body: some View {
         VStack(spacing: 20) {
@@ -85,6 +87,115 @@ struct ContentView: View {
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
+                // Model Selection & Usage Section
+                VStack(spacing: 0) {
+                    SectionHeader(title: "Transcription Model & Usage")
+
+                    VStack(spacing: 16) {
+                        // Model Selection
+                        HStack(spacing: 12) {
+                            Image(systemName: "cpu.fill")
+                                .font(.system(size: 20))
+                                .foregroundColor(.blue)
+                                .frame(width: 32, height: 32)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Transcription Model")
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                Text("Choose quality vs cost")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Picker("", selection: $transcriptionService.selectedModel) {
+                                ForEach(WhisperModel.allCases, id: \.self) { model in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(model.displayName)
+                                            .font(.body)
+                                        Text(model.description)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .tag(model)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 250)
+                        }
+
+                        Divider()
+
+                        // Usage Statistics
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "chart.bar.fill")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.purple)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.purple.opacity(0.1))
+                                    .cornerRadius(8)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("Usage & Costs")
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                    Text("All-time statistics")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                Button(action: {
+                                    UsageTracker.shared.resetUsage()
+                                    refreshUsageStats()
+                                }) {
+                                    HStack(spacing: 4) {
+                                        Image(systemName: "trash")
+                                        Text("Reset")
+                                    }
+                                    .font(.caption)
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                            }
+
+                            // Statistics Grid
+                            HStack(spacing: 12) {
+                                UsageStatCard(
+                                    title: "Total Cost",
+                                    value: String(format: "$%.4f", usageStatistics.totalCost),
+                                    icon: "dollarsign.circle.fill",
+                                    color: .green
+                                )
+
+                                UsageStatCard(
+                                    title: "Requests",
+                                    value: "\(usageStatistics.totalRequests)",
+                                    icon: "mic.circle.fill",
+                                    color: .blue
+                                )
+
+                                UsageStatCard(
+                                    title: "Minutes",
+                                    value: String(format: "%.1f", usageStatistics.totalMinutes),
+                                    icon: "clock.fill",
+                                    color: .orange
+                                )
+                            }
+                        }
+                    }
+                    .padding(14)
+                }
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+
                 // Instructions Section
                 VStack(spacing: 0) {
                     SectionHeader(title: "How to Use")
@@ -119,7 +230,7 @@ struct ContentView: View {
                 }
         }
         .padding(24)
-        .frame(minWidth: 480, idealWidth: 480, minHeight: 620)
+        .frame(minWidth: 480, idealWidth: 480, minHeight: 780)
         .sheet(isPresented: $showAPIKeyInput) {
             APIKeyInputView(
                 apiKey: $apiKey,
@@ -137,6 +248,18 @@ struct ContentView: View {
             audioRecordingManager.checkMicrophonePermission()
             // Load existing API key if present
             apiKey = transcriptionService.apiKey
+
+            // Load usage stats
+            refreshUsageStats()
+
+            // Set up periodic refresh for usage stats (every 2 seconds)
+            refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+                refreshUsageStats()
+            }
+        }
+        .onDisappear {
+            refreshTimer?.invalidate()
+            refreshTimer = nil
         }
         .onChange(of: showAPIKeyInput) { _, newValue in
             if newValue {
@@ -144,6 +267,10 @@ struct ContentView: View {
                 apiKey = transcriptionService.apiKey
             }
         }
+    }
+
+    private func refreshUsageStats() {
+        usageStatistics = UsageTracker.shared.getStatistics()
     }
 }
 
@@ -270,6 +397,34 @@ struct InstructionBlock: View {
             }
             .padding(.leading, 2)
         }
+    }
+}
+
+struct UsageStatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(color)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Text(value)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+        .cornerRadius(8)
     }
 }
 
