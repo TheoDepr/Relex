@@ -23,6 +23,7 @@ class VoiceOverlayViewModel: ObservableObject {
 
     private var recordingFileURL: URL?
     private var capturedContext: String?
+    private var transcriptionTask: Task<Void, Never>?
 
     init(audioRecordingManager: AudioRecordingManager,
          transcriptionService: TranscriptionService,
@@ -88,7 +89,8 @@ class VoiceOverlayViewModel: ObservableObject {
             print("⏭️ Recording too short (\(String(format: "%.2f", recordedDuration))s), ignoring")
 
             // Stop and cleanup
-            if let audioURL = audioRecordingManager.stopRecording() {
+            let (audioURL, _) = audioRecordingManager.stopRecording()
+            if let audioURL = audioURL {
                 audioRecordingManager.cleanupRecording(at: audioURL)
             }
 
@@ -99,7 +101,8 @@ class VoiceOverlayViewModel: ObservableObject {
         }
 
         // Stop recording
-        guard let audioURL = audioRecordingManager.stopRecording() else {
+        let (audioURL, audioDuration) = audioRecordingManager.stopRecording()
+        guard let audioURL = audioURL else {
             error = "Failed to stop recording"
             state = .error
 
@@ -119,28 +122,67 @@ class VoiceOverlayViewModel: ObservableObject {
         // Update state to transcribing
         state = .transcribing
 
-        // Transcribe audio
-        do {
-            let transcribedText = try await transcriptionService.transcribe(
-                audioFileURL: audioURL,
-                context: capturedContext
-            )
+        // Transcribe audio in a cancellable task
+        transcriptionTask = Task { @MainActor in
+            do {
+                let transcribedText = try await transcriptionService.transcribe(
+                    audioFileURL: audioURL,
+                    context: capturedContext,
+                    durationSeconds: audioDuration
+                )
 
-            print("✅ Transcription complete: \"\(transcribedText)\"")
+                // Check if task was cancelled
+                guard !Task.isCancelled else {
+                    print("⚠️ Transcription was cancelled")
+                    audioRecordingManager.cleanupRecording(at: audioURL)
+                    return
+                }
 
-            // Insert transcribed text
-            print("📝 Attempting to insert transcribed text: \"\(transcribedText)\"")
-            let success = await accessibilityManager.insertText(transcribedText)
+                print("✅ Transcription complete: \"\(transcribedText)\"")
 
-            if success {
-                print("✅ Text inserted successfully")
-                hide()
-                windowManager?.hideOverlay()
-            } else {
-                let errorMsg = accessibilityManager.lastError ?? "Failed to insert text"
-                print("❌ Insert failed: \(errorMsg)")
-                error = "Insert failed: \(errorMsg)"
+                // Insert transcribed text
+                print("📝 Attempting to insert transcribed text: \"\(transcribedText)\"")
+                let success = await accessibilityManager.insertText(transcribedText)
+
+                if success {
+                    print("✅ Text inserted successfully")
+                    hide()
+                    windowManager?.hideOverlay()
+                } else {
+                    let errorMsg = accessibilityManager.lastError ?? "Failed to insert text"
+                    print("❌ Insert failed: \(errorMsg)")
+                    error = "Insert failed: \(errorMsg)"
+                    state = .error
+
+                    // Auto-hide after showing error briefly
+                    Task {
+                        try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                        await MainActor.run {
+                            if state == .error {
+                                hide()
+                                windowManager?.hideOverlay()
+                            }
+                        }
+                    }
+                }
+
+                // Cleanup audio file
+                audioRecordingManager.cleanupRecording(at: audioURL)
+
+            } catch {
+                // Check if task was cancelled
+                guard !Task.isCancelled else {
+                    print("⚠️ Transcription was cancelled")
+                    audioRecordingManager.cleanupRecording(at: audioURL)
+                    return
+                }
+
+                print("❌ Transcription error: \(error.localizedDescription)")
+                self.error = error.localizedDescription
                 state = .error
+
+                // Cleanup audio file
+                audioRecordingManager.cleanupRecording(at: audioURL)
 
                 // Auto-hide after showing error briefly
                 Task {
@@ -150,28 +192,6 @@ class VoiceOverlayViewModel: ObservableObject {
                             hide()
                             windowManager?.hideOverlay()
                         }
-                    }
-                }
-            }
-
-            // Cleanup audio file
-            audioRecordingManager.cleanupRecording(at: audioURL)
-
-        } catch {
-            print("❌ Transcription error: \(error.localizedDescription)")
-            self.error = error.localizedDescription
-            state = .error
-
-            // Cleanup audio file
-            audioRecordingManager.cleanupRecording(at: audioURL)
-
-            // Auto-hide after showing error briefly
-            Task {
-                try? await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                await MainActor.run {
-                    if state == .error {
-                        hide()
-                        windowManager?.hideOverlay()
                     }
                 }
             }
@@ -186,15 +206,29 @@ class VoiceOverlayViewModel: ObservableObject {
         recordingDuration = 0
         recordingFileURL = nil
         capturedContext = nil
+
+        // Cancel any ongoing transcription
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+
+        // Notify that the voice operation is complete
+        NotificationCenter.default.post(name: .voiceOperationCompleted, object: nil)
     }
 
     func cancel() {
-        print("🚫 Canceling voice recording")
+        print("🚫 Canceling voice operation (state: \(state))")
 
         if state == .recording {
-            if let audioURL = audioRecordingManager.stopRecording() {
+            // Cancel recording
+            let (audioURL, _) = audioRecordingManager.stopRecording()
+            if let audioURL = audioURL {
                 audioRecordingManager.cleanupRecording(at: audioURL)
             }
+        } else if state == .transcribing {
+            // Cancel transcription task
+            print("⚠️ Canceling ongoing transcription")
+            transcriptionTask?.cancel()
+            transcriptionTask = nil
         }
 
         hide()
@@ -299,6 +333,37 @@ struct WaveformBar: View {
             )
             .frame(width: 3, height: height)
             .animation(.easeInOut(duration: 0.1), value: audioLevel)
+    }
+}
+
+struct PulsingDotsView: View {
+    @State private var isAnimating = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(0..<3) { index in
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: 10, height: 10)
+                    .scaleEffect(isAnimating ? 1.5 : 0.5)
+                    .opacity(isAnimating ? 1.0 : 0.3)
+                    .animation(
+                        .easeInOut(duration: 0.6)
+                            .repeatForever()
+                            .delay(Double(index) * 0.2),
+                        value: isAnimating
+                    )
+            }
+        }
+        .onAppear {
+            isAnimating = true
+        }
     }
 }
 

@@ -8,7 +8,6 @@
 import Foundation
 import Security
 
-@MainActor
 class KeychainManager {
     static let shared = KeychainManager()
 
@@ -46,7 +45,8 @@ class KeychainManager {
 
             let attributes: [String: Any] = [
                 kSecValueData as String: keyData,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+                kSecAttrSynchronizable as String: false
             ]
 
             let status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
@@ -61,7 +61,7 @@ class KeychainManager {
                 kSecAttrService as String: service,
                 kSecAttrAccount as String: openAIKeyAccount,
                 kSecValueData as String: keyData,
-                kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
+                kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
                 kSecAttrSynchronizable as String: false // Don't sync via iCloud for security
             ]
 
@@ -92,7 +92,7 @@ class KeychainManager {
 
     /// Check if API key exists in Keychain
     func hasAPIKey() -> Bool {
-        return !getAPIKey().isEmpty
+        return (try? getAPIKeyData()) != nil
     }
 
     /// Delete API key from Keychain

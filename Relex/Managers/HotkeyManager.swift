@@ -9,6 +9,7 @@ class HotkeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var eventTap: CFMachPort?
     private var isRightOptionPressed = false
+    private var isVoiceOperationActive = false // Track if recording or transcribing
     private var lastRightOptionEventTime: TimeInterval = 0
     private let debounceInterval: TimeInterval = 0.1 // 100ms debounce
     private var eventTapMonitorTimer: Timer?
@@ -38,6 +39,26 @@ class HotkeyManager {
                 self?.reinitializeEventTapIfNeeded()
             }
         }
+
+        // Listen for voice operation completion to clear the active flag
+        NotificationCenter.default.addObserver(
+            forName: .voiceOperationCompleted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isVoiceOperationActive = false
+            print("✅ Voice operation completed - Escape key will no longer be intercepted")
+        }
+
+        // Listen for voice operation cancellation to clear the active flag
+        NotificationCenter.default.addObserver(
+            forName: .voiceRecordingCanceled,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isVoiceOperationActive = false
+            print("🚫 Voice operation canceled - Escape key will no longer be intercepted")
+        }
     }
 
     func startListening() {
@@ -46,9 +67,6 @@ class HotkeyManager {
         // Check if accessibility is granted
         let hasAccessibility = AXIsProcessTrusted()
         print("🔐 Accessibility permission status in HotkeyManager: \(hasAccessibility)")
-
-        // Start Option+J hotkey (works without accessibility)
-        setupOptionZeroHotkey()
 
         // Start Right Option key monitoring (requires accessibility)
         if hasAccessibility {
@@ -117,45 +135,6 @@ class HotkeyManager {
         }
     }
 
-    private func setupOptionZeroHotkey() {
-        print("🔧 Setting up Option+J hotkey...")
-        // Use Carbon Event Manager for system-wide hotkey registration
-        // This works even in text fields because it's registered at system level
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-
-        let status = InstallEventHandler(GetApplicationEventTarget(), { (nextHandler, event, userData) -> OSStatus in
-            guard let userData = userData else { return OSStatus(eventNotHandledErr) }
-
-            _ = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-
-            print("🔥 Hotkey triggered: Option + J")
-            NotificationCenter.default.post(name: .relexHotkeyTriggered, object: nil)
-
-            return noErr
-        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandler)
-
-        if status != noErr {
-            print("❌ Failed to install event handler: \(status)")
-            return
-        }
-
-        // Register Option + J (keyCode 38 for 'j', optionKey modifier)
-        let registerStatus = RegisterEventHotKey(
-            38, // keyCode for 'j'
-            UInt32(optionKey), // Option modifier
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-
-        if registerStatus == noErr {
-            print("✅ Hotkey registered: Option + J (system-wide)")
-        } else {
-            print("❌ Failed to register hotkey: \(registerStatus)")
-        }
-    }
-
     private func setupRightOptionMonitoring() {
         print("🔧 Setting up Right Option monitoring...")
 
@@ -189,11 +168,19 @@ class HotkeyManager {
                 // Handle key down events (for Escape)
                 if eventType == .keyDown {
                     // Escape key code is 53
-                    if keyCode == 53 && manager.isRightOptionPressed {
-                        print("⎋ Escape pressed during recording - canceling")
-                        manager.isRightOptionPressed = false
-                        NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
-                        return nil // Consume the escape key
+                    if keyCode == 53 {
+                        // Only intercept Escape if there's an active voice operation
+                        if manager.isVoiceOperationActive {
+                            print("⎋ Escape pressed - canceling voice operation")
+                            if manager.isRightOptionPressed {
+                                manager.isRightOptionPressed = false
+                            }
+                            NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
+                            return nil // Consume the escape key
+                        } else {
+                            // No active voice operation - let Escape pass through
+                            return Unmanaged.passRetained(event)
+                        }
                     }
                     return Unmanaged.passRetained(event)
                 }
@@ -221,8 +208,10 @@ class HotkeyManager {
                         if isPressed && !manager.isRightOptionPressed {
                             // Right Option pressed
                             manager.isRightOptionPressed = true
+                            manager.isVoiceOperationActive = true
                             manager.lastRightOptionEventTime = currentTime
                             print("🎤 Right Option key pressed (keyCode: \(keyCode))")
+                            print("🔒 Voice operation started - Escape key will be intercepted")
                             NotificationCenter.default.post(name: .voiceRecordingStarted, object: nil)
                         } else if !isPressed && manager.isRightOptionPressed {
                             // Right Option released
@@ -311,8 +300,8 @@ extension String {
 }
 
 extension Notification.Name {
-    static let relexHotkeyTriggered = Notification.Name("relexHotkeyTriggered")
     static let voiceRecordingStarted = Notification.Name("voiceRecordingStarted")
     static let voiceRecordingStopped = Notification.Name("voiceRecordingStopped")
     static let voiceRecordingCanceled = Notification.Name("voiceRecordingCanceled")
+    static let voiceOperationCompleted = Notification.Name("voiceOperationCompleted")
 }
