@@ -83,12 +83,8 @@ class TranscriptionService: ObservableObject {
         body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n".data(using: .utf8)!)
         body.append("en\r\n".data(using: .utf8)!)
 
-        // Add prompt with context (helps with accuracy and punctuation)
-        if let context = context, !context.isEmpty {
-            body.append("--\(boundary)\r\n".data(using: .utf8)!)
-            body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n".data(using: .utf8)!)
-            body.append("\(context)\r\n".data(using: .utf8)!)
-        }
+        // Note: Context is NOT sent to Whisper API as it can confuse the model
+        // Instead, context is only used for post-processing spacing and capitalization
 
         // Add audio file
         body.append("--\(boundary)\r\n".data(using: .utf8)!)
@@ -131,7 +127,77 @@ class TranscriptionService: ObservableObject {
         usageTracker.trackUsage(durationSeconds: durationSeconds, model: selectedModel)
 
         print("✅ Transcription successful: \"\(text)\"")
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Post-process the transcribed text based on context
+        let processedText = postProcessTranscription(text, context: context)
+        print("✅ Post-processed text: \"\(processedText)\"")
+
+        return processedText
+    }
+
+    /// Post-processes transcribed text to ensure proper spacing and capitalization based on context
+    private func postProcessTranscription(_ text: String, context: String?) -> String {
+        var processedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If no context, just return trimmed text with first letter capitalized
+        guard let context = context, !context.isEmpty else {
+            print("📝 No context available, capitalizing first letter")
+            return processedText.isEmpty ? processedText : processedText.prefix(1).uppercased() + processedText.dropFirst()
+        }
+
+        // Check if context is only whitespace
+        let trimmedContext = context.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedContext.isEmpty else {
+            print("📝 Empty context, capitalizing first letter")
+            return processedText.isEmpty ? processedText : processedText.prefix(1).uppercased() + processedText.dropFirst()
+        }
+
+        // For capitalization: find the last meaningful character (before any trailing spaces, but include newlines)
+        // Walk backwards through the context, skipping only spaces and tabs (not newlines)
+        var lastMeaningfulChar: Character?
+        for char in context.reversed() {
+            if char == " " || char == "\t" {
+                continue
+            }
+            lastMeaningfulChar = char
+            break
+        }
+
+        // Sentence-ending punctuation: capitalize first letter
+        let sentenceEnders: Set<Character> = [".", "!", "?", "\n"]
+        let shouldCapitalize = lastMeaningfulChar.map { sentenceEnders.contains($0) } ?? false
+
+        if shouldCapitalize {
+            print("📝 Context ends with sentence ender '\(lastMeaningfulChar!)', capitalizing first letter")
+            if !processedText.isEmpty {
+                processedText = processedText.prefix(1).uppercased() + processedText.dropFirst()
+            }
+        } else {
+            print("📝 Context is mid-sentence (last char: '\(lastMeaningfulChar?.description ?? "none")'), adjusting capitalization")
+            // Mid-sentence: keep lowercase unless the word should be capitalized (like "I")
+            if !processedText.isEmpty && processedText.first?.isUppercase == true {
+                // Check if this is a word that should always be capitalized
+                let firstWord = processedText.components(separatedBy: .whitespaces).first ?? ""
+                let alwaysCapitalized = ["I", "I'm", "I'll", "I've", "I'd"]
+
+                if !alwaysCapitalized.contains(firstWord) {
+                    print("📝 Converting to lowercase since mid-sentence")
+                    processedText = processedText.prefix(1).lowercased() + processedText.dropFirst()
+                }
+            }
+        }
+
+        // For spacing: use ORIGINAL context (not trimmed) to check if space is needed
+        // If context ends with any whitespace (space, newline, tab), don't add more
+        let lastChar = context.last!
+        if lastChar.isWhitespace {
+            print("📝 No space needed, context already ends with whitespace: '\\(lastChar.unicodeScalars.first!.value)'")
+        } else {
+            print("📝 Adding space before transcribed text (last char: '\(lastChar)')")
+            processedText = " " + processedText
+        }
+
+        return processedText
     }
 }
 
