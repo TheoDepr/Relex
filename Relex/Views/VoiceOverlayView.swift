@@ -210,6 +210,9 @@ class VoiceOverlayViewModel: ObservableObject {
         // Cancel any ongoing transcription
         transcriptionTask?.cancel()
         transcriptionTask = nil
+
+        // Notify that the voice operation is complete
+        NotificationCenter.default.post(name: .voiceOperationCompleted, object: nil)
     }
 
     func cancel() {

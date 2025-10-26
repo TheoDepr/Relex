@@ -9,6 +9,7 @@ class HotkeyManager {
     private var hotKeyRef: EventHotKeyRef?
     private var eventTap: CFMachPort?
     private var isRightOptionPressed = false
+    private var isVoiceOperationActive = false // Track if recording or transcribing
     private var lastRightOptionEventTime: TimeInterval = 0
     private let debounceInterval: TimeInterval = 0.1 // 100ms debounce
     private var eventTapMonitorTimer: Timer?
@@ -37,6 +38,26 @@ class HotkeyManager {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 self?.reinitializeEventTapIfNeeded()
             }
+        }
+
+        // Listen for voice operation completion to clear the active flag
+        NotificationCenter.default.addObserver(
+            forName: .voiceOperationCompleted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isVoiceOperationActive = false
+            print("✅ Voice operation completed - Escape key will no longer be intercepted")
+        }
+
+        // Listen for voice operation cancellation to clear the active flag
+        NotificationCenter.default.addObserver(
+            forName: .voiceRecordingCanceled,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.isVoiceOperationActive = false
+            print("🚫 Voice operation canceled - Escape key will no longer be intercepted")
         }
     }
 
@@ -148,13 +169,18 @@ class HotkeyManager {
                 if eventType == .keyDown {
                     // Escape key code is 53
                     if keyCode == 53 {
-                        // Cancel voice recording/transcription at any stage
-                        print("⎋ Escape pressed - canceling voice operation")
-                        if manager.isRightOptionPressed {
-                            manager.isRightOptionPressed = false
+                        // Only intercept Escape if there's an active voice operation
+                        if manager.isVoiceOperationActive {
+                            print("⎋ Escape pressed - canceling voice operation")
+                            if manager.isRightOptionPressed {
+                                manager.isRightOptionPressed = false
+                            }
+                            NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
+                            return nil // Consume the escape key
+                        } else {
+                            // No active voice operation - let Escape pass through
+                            return Unmanaged.passRetained(event)
                         }
-                        NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
-                        return nil // Consume the escape key
                     }
                     return Unmanaged.passRetained(event)
                 }
@@ -182,8 +208,10 @@ class HotkeyManager {
                         if isPressed && !manager.isRightOptionPressed {
                             // Right Option pressed
                             manager.isRightOptionPressed = true
+                            manager.isVoiceOperationActive = true
                             manager.lastRightOptionEventTime = currentTime
                             print("🎤 Right Option key pressed (keyCode: \(keyCode))")
+                            print("🔒 Voice operation started - Escape key will be intercepted")
                             NotificationCenter.default.post(name: .voiceRecordingStarted, object: nil)
                         } else if !isPressed && manager.isRightOptionPressed {
                             // Right Option released
@@ -275,4 +303,5 @@ extension Notification.Name {
     static let voiceRecordingStarted = Notification.Name("voiceRecordingStarted")
     static let voiceRecordingStopped = Notification.Name("voiceRecordingStopped")
     static let voiceRecordingCanceled = Notification.Name("voiceRecordingCanceled")
+    static let voiceOperationCompleted = Notification.Name("voiceOperationCompleted")
 }
