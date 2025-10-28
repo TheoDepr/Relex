@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Relex is a system-wide voice dictation assistant for macOS. It runs as a **menu bar app** (no Dock icon) and provides:
-- **Voice Dictation**: Hold Right Option key to record, release to transcribe and insert text using OpenAI Whisper
-- **Menu Bar Interface**: Settings accessible via menu bar icon (⚡) in top-right corner
+Relex is an open source voice dictation assistant for macOS. It runs as a **menu bar app** (no Dock icon) and provides:
+- **Voice Dictation**: Hold Right Option key to record, release to transcribe and insert text using OpenAI GPT-4o transcription
+- **Menu Bar Interface**: Settings accessible via menu bar icon (star) in top-right corner
+- **Works Everywhere**: Functions in any app where you can type text
 
 ## Build & Run Commands
 
@@ -32,7 +33,7 @@ The app follows an MVVM architecture with a central coordinator pattern:
 
 **AppDelegate** (`RelexApp.swift`):
 - Main application delegate managing the menu bar app lifecycle
-- Creates and manages the menu bar status item (⚡ icon)
+- Creates and manages the menu bar status item (star icon)
 - Initializes the AppCoordinator and manages settings window
 - Provides menu actions: Settings and Quit
 
@@ -53,9 +54,13 @@ The app follows an MVVM architecture with a central coordinator pattern:
   - Special handling for web browsers (uses typing simulation)
 - **AudioRecordingManager**: Handles audio recording for voice dictation
   - Manages microphone permissions
-  - Records audio to temporary WAV files
-- **TranscriptionService**: Converts audio to text via OpenAI Whisper API
+  - Records audio to temporary M4A files
+- **TranscriptionService**: Converts audio to text via OpenAI GPT-4o transcription API
+  - Supports multiple models: gpt-4o-transcribe, gpt-4o-mini-transcribe, gpt-4o-transcribe-diarize
   - Handles API key storage via Keychain
+- **UsageTracker**: Tracks API usage and costs
+  - Monitors transcription requests, duration, and associated costs
+  - Provides real-time statistics in settings
 - **VoiceOverlayWindowManager**: Manages voice recording overlay window
 
 **View Models**:
@@ -70,7 +75,9 @@ The app follows an MVVM architecture with a central coordinator pattern:
   - Managed as an NSWindow by AppDelegate
   - Hosts SwiftUI view with NSHostingView
   - Shows microphone and accessibility permissions
-  - Manages OpenAI API key for Whisper transcription
+  - Manages OpenAI API key for GPT-4o transcription
+  - Model selection and usage statistics tracking
+  - Scrollable interface with fixed height (650px)
 - **VoiceOverlayView**: SwiftUI view for voice recording overlay
   - Shows waveform during recording
   - Shows pulsing dots during transcription
@@ -113,11 +120,16 @@ The app follows an MVVM architecture with a central coordinator pattern:
 
 ### OpenAI Integration
 
-TranscriptionService uses OpenAI's Whisper API for speech-to-text:
-- Accepts audio files in WAV format
-- Optional context parameter to improve transcription accuracy
+TranscriptionService uses OpenAI's GPT-4o transcription API for speech-to-text:
+- Accepts audio files in M4A format
+- Three model options:
+  - `gpt-4o-mini-transcribe`: $0.003/min (50% cheaper)
+  - `gpt-4o-transcribe`: $0.006/min (standard quality)
+  - `gpt-4o-transcribe-diarize`: $0.006/min (speaker identification)
+- Context-aware post-processing for proper spacing and capitalization
 - API key stored securely in macOS Keychain via KeychainManager
 - Automatic cleanup of temporary audio files after transcription
+- Usage tracking with cost calculation
 
 ### Keychain Storage
 
@@ -139,7 +151,7 @@ Voice Dictation:
 
 Relex runs as a menu bar-only app (no Dock icon):
 - **AppDelegate** initializes on `applicationDidFinishLaunching`
-- **NSStatusItem** created with bolt.fill icon (⚡)
+- **NSStatusItem** created with star icon (SF Symbol)
 - **Menu items**: Settings (Cmd+,) and Quit (Cmd+Q)
 - **Settings window**: Manually created NSWindow with NSHostingView wrapping SwiftUI ContentView
 - **LSUIElement = YES**: Configured via `INFOPLIST_KEY_LSUIElement` in build settings to hide from Dock

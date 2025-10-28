@@ -18,7 +18,8 @@ struct ContentView: View {
     @State private var refreshTimer: Timer?
 
     var body: some View {
-        VStack(spacing: 20) {
+        ScrollView {
+            VStack(spacing: 20) {
                 // Header
                 VStack(spacing: 4) {
                     Text("Relex")
@@ -30,6 +31,31 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
                 .padding(.bottom, 4)
+
+                // Instructions Section
+                VStack(spacing: 0) {
+                    SectionHeader(title: "How to Use")
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        // Voice Dictation
+                        InstructionBlock(
+                            title: "Voice Dictation:",
+                            icon: "waveform",
+                            iconColor: .purple,
+                            steps: [
+                                ("1", "Hold Right Option key to start recording"),
+                                ("2", "Speak your text clearly"),
+                                ("3", "Release Right Option to transcribe and insert"),
+                                ("4", "Press Escape anytime to cancel")
+                            ]
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                }
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
                 // Permissions Section
                 VStack(spacing: 0) {
@@ -196,41 +222,23 @@ struct ContentView: View {
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
-                // Instructions Section
-                VStack(spacing: 0) {
-                    SectionHeader(title: "How to Use")
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        // Voice Dictation
-                        InstructionBlock(
-                            title: "Voice Dictation:",
-                            icon: "waveform",
-                            iconColor: .purple,
-                            steps: [
-                                ("1", "Hold Right Option key to start recording"),
-                                ("2", "Speak your text clearly"),
-                                ("3", "Release Right Option to transcribe and insert"),
-                                ("4", "Press Escape anytime to cancel")
-                            ]
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(14)
-                }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
-
                 // Footer
-                if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
-                    Text("Version \(version)")
+                VStack(spacing: 4) {
+                    if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String {
+                        Text("Version \(version)")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
+
+                    Text("Made by Theo Depraetere")
                         .font(.caption2)
                         .foregroundColor(.secondary)
-                        .padding(.top, 4)
                 }
+                .padding(.top, 4)
+            }
+            .padding(24)
         }
-        .padding(24)
-        .frame(minWidth: 480, idealWidth: 480, minHeight: 780)
+        .frame(minWidth: 480, idealWidth: 480, minHeight: 650, maxHeight: 650)
         .sheet(isPresented: $showAPIKeyInput) {
             APIKeyInputView(
                 apiKey: $apiKey,

@@ -47,7 +47,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "bolt.fill", accessibilityDescription: "Relex")
+            button.image = NSImage(systemSymbolName: "sparkles", accessibilityDescription: "Relex")
         }
 
         // Create menu
