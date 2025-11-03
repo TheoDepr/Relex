@@ -80,7 +80,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             let contentView = ContentView(
                 accessibilityManager: appCoordinator.accessibilityManager,
                 audioRecordingManager: appCoordinator.audioRecordingManager,
-                transcriptionService: appCoordinator.transcriptionService
+                transcriptionService: appCoordinator.transcriptionService,
+                gptService: appCoordinator.gptService
             )
             window.contentView = NSHostingView(rootView: contentView)
 
@@ -109,6 +110,7 @@ class AppCoordinator: ObservableObject {
     let accessibilityManager = AccessibilityManager()
     let audioRecordingManager = AudioRecordingManager()
     let transcriptionService = TranscriptionService()
+    let gptService = GPTService()
     let voiceOverlayViewModel: VoiceOverlayViewModel
     let voiceOverlayWindowManager: VoiceOverlayWindowManager
 
@@ -119,6 +121,7 @@ class AppCoordinator: ObservableObject {
         self.voiceOverlayViewModel = VoiceOverlayViewModel(
             audioRecordingManager: audioRecordingManager,
             transcriptionService: transcriptionService,
+            gptService: gptService,
             accessibilityManager: accessibilityManager
         )
         self.voiceOverlayWindowManager = VoiceOverlayWindowManager(

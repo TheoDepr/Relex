@@ -15,21 +15,26 @@ class VoiceOverlayViewModel: ObservableObject {
     @Published var audioLevel: Float = 0.0
     @Published var recordingDuration: TimeInterval = 0
     @Published var error: String?
+    @Published var mode: VoiceMode = .dictation
 
     private let audioRecordingManager: AudioRecordingManager
     private let transcriptionService: TranscriptionService
+    private let gptService: GPTService
     private let accessibilityManager: AccessibilityManager
     weak var windowManager: VoiceOverlayWindowManager?
 
     private var recordingFileURL: URL?
     private var capturedContext: String?
+    private var selectedText: String?
     private var transcriptionTask: Task<Void, Never>?
 
     init(audioRecordingManager: AudioRecordingManager,
          transcriptionService: TranscriptionService,
+         gptService: GPTService,
          accessibilityManager: AccessibilityManager) {
         self.audioRecordingManager = audioRecordingManager
         self.transcriptionService = transcriptionService
+        self.gptService = gptService
         self.accessibilityManager = accessibilityManager
     }
 
@@ -42,12 +47,21 @@ class VoiceOverlayViewModel: ObservableObject {
             hide()
         }
 
-        // Capture context from focused element (optional - only used to improve transcription)
+        // Capture context/selected text from focused element
         capturedContext = await accessibilityManager.captureTextFromFocusedElement()
+
+        // Determine mode based on whether text is selected
         if let context = capturedContext, !context.isEmpty {
-            print("📝 Captured context for transcription hint: \(context.prefix(100))...")
+            // Command mode: text is selected
+            mode = .command
+            selectedText = context
+            print("🎯 COMMAND MODE activated - selected text: \"\(context.prefix(100))...\"")
         } else {
-            print("📝 No context captured (empty field) - transcription will work without hint")
+            // Dictation mode: no selection
+            mode = .dictation
+            selectedText = nil
+            capturedContext = nil
+            print("📝 DICTATION MODE activated - no selection")
         }
 
         // Show overlay
@@ -119,15 +133,22 @@ class VoiceOverlayViewModel: ObservableObject {
             return
         }
 
-        // Update state to transcribing
-        state = .transcribing
+        // Update state based on mode
+        if mode == .command {
+            state = .commandProcessing
+            print("🎯 Processing voice command...")
+        } else {
+            state = .transcribing
+            print("📝 Transcribing voice...")
+        }
 
-        // Transcribe audio in a cancellable task
+        // Process audio in a cancellable task
         transcriptionTask = Task { @MainActor in
             do {
+                // First, transcribe the voice command/dictation
                 let transcribedText = try await transcriptionService.transcribe(
                     audioFileURL: audioURL,
-                    context: capturedContext,
+                    context: mode == .dictation ? capturedContext : nil,  // Only use context for dictation mode
                     durationSeconds: audioDuration
                 )
 
@@ -140,9 +161,40 @@ class VoiceOverlayViewModel: ObservableObject {
 
                 print("✅ Transcription complete: \"\(transcribedText)\"")
 
-                // Insert transcribed text
-                print("📝 Attempting to insert transcribed text: \"\(transcribedText)\"")
-                let success = await accessibilityManager.insertText(transcribedText)
+                // Now process based on mode
+                let finalText: String
+                if mode == .command {
+                    // Command mode: Send selected text + voice command to GPT
+                    guard let selected = selectedText else {
+                        throw GPTError.emptySelectedText
+                    }
+
+                    print("🎯 Sending to GPT for processing...")
+                    print("   Selected text: \"\(selected.prefix(100))...\"")
+                    print("   Voice command: \"\(transcribedText)\"")
+
+                    finalText = try await gptService.processTextCommand(
+                        selectedText: selected,
+                        voiceCommand: transcribedText
+                    )
+
+                    print("✅ GPT processing complete")
+                    print("   Result length: \(finalText.count) chars")
+                } else {
+                    // Dictation mode: Use transcribed text directly
+                    finalText = transcribedText
+                }
+
+                // Check if task was cancelled
+                guard !Task.isCancelled else {
+                    print("⚠️ Processing was cancelled")
+                    audioRecordingManager.cleanupRecording(at: audioURL)
+                    return
+                }
+
+                // Insert final text (will replace selection in command mode)
+                print("📝 Attempting to insert final text: \"\(finalText.prefix(100))...\"")
+                let success = await accessibilityManager.insertText(finalText)
 
                 if success {
                     print("✅ Text inserted successfully")
@@ -172,12 +224,12 @@ class VoiceOverlayViewModel: ObservableObject {
             } catch {
                 // Check if task was cancelled
                 guard !Task.isCancelled else {
-                    print("⚠️ Transcription was cancelled")
+                    print("⚠️ Processing was cancelled")
                     audioRecordingManager.cleanupRecording(at: audioURL)
                     return
                 }
 
-                print("❌ Transcription error: \(error.localizedDescription)")
+                print("❌ Processing error: \(error.localizedDescription)")
                 self.error = error.localizedDescription
                 state = .error
 
@@ -206,8 +258,10 @@ class VoiceOverlayViewModel: ObservableObject {
         recordingDuration = 0
         recordingFileURL = nil
         capturedContext = nil
+        selectedText = nil
+        mode = .dictation
 
-        // Cancel any ongoing transcription
+        // Cancel any ongoing transcription/processing
         transcriptionTask?.cancel()
         transcriptionTask = nil
 
@@ -216,7 +270,7 @@ class VoiceOverlayViewModel: ObservableObject {
     }
 
     func cancel() {
-        print("🚫 Canceling voice operation (state: \(state))")
+        print("🚫 Canceling voice operation (state: \(state), mode: \(mode))")
 
         if state == .recording {
             // Cancel recording
@@ -224,9 +278,9 @@ class VoiceOverlayViewModel: ObservableObject {
             if let audioURL = audioURL {
                 audioRecordingManager.cleanupRecording(at: audioURL)
             }
-        } else if state == .transcribing {
-            // Cancel transcription task
-            print("⚠️ Canceling ongoing transcription")
+        } else if state == .transcribing || state == .commandProcessing {
+            // Cancel transcription/processing task
+            print("⚠️ Canceling ongoing \(state == .commandProcessing ? "command processing" : "transcription")")
             transcriptionTask?.cancel()
             transcriptionTask = nil
         }
@@ -240,7 +294,13 @@ enum VoiceState {
     case idle
     case recording
     case transcribing
+    case commandProcessing
     case error
+}
+
+enum VoiceMode {
+    case dictation  // Insert new text
+    case command    // Transform selected text
 }
 
 struct VoiceOverlayView: View {
@@ -254,13 +314,32 @@ struct VoiceOverlayView: View {
                 EmptyView()
 
             case .recording:
-                // Just waveform - minimalistic
-                WaveformView(audioLevel: audioManager.audioLevel)
-                    .frame(width: 200, height: 30)
+                // Show waveform with mode-specific colors
+                if viewModel.mode == .command {
+                    // Command mode: red/yellow colors (red bottom, yellow top)
+                    WaveformView(audioLevel: audioManager.audioLevel, colors: [.red, .yellow])
+                        .frame(width: 200, height: 30)
+                } else {
+                    // Dictation mode: purple/blue colors (purple bottom, blue top)
+                    WaveformView(audioLevel: audioManager.audioLevel, colors: [.purple, .blue])
+                        .frame(width: 200, height: 30)
+                }
 
             case .transcribing:
-                // Pulsing dots animation
-                PulsingDotsView()
+                // Pulsing dots animation - color based on mode
+                if viewModel.mode == .command {
+                    // Command mode: deep orange/yellow
+                    PulsingDotsView(colors: [.red, .yellow])
+                        .frame(width: 200, height: 30)
+                } else {
+                    // Dictation mode: purple/blue
+                    PulsingDotsView(colors: [.purple, .blue])
+                        .frame(width: 200, height: 30)
+                }
+
+            case .commandProcessing:
+                // Pulsing dots animation (deep orange/yellow for command)
+                PulsingDotsView(colors: [.red, .yellow])
                     .frame(width: 200, height: 30)
 
             case .error:
@@ -290,7 +369,13 @@ struct VoiceOverlayView: View {
 
 struct WaveformView: View {
     let audioLevel: Float
+    let colors: [Color]
     let barCount = 30
+
+    init(audioLevel: Float, colors: [Color] = [.blue, .purple]) {
+        self.audioLevel = audioLevel
+        self.colors = colors
+    }
 
     var body: some View {
         HStack(spacing: 2) {
@@ -298,7 +383,8 @@ struct WaveformView: View {
                 WaveformBar(
                     audioLevel: audioLevel,
                     index: index,
-                    totalBars: barCount
+                    totalBars: barCount,
+                    colors: colors
                 )
             }
         }
@@ -311,6 +397,14 @@ struct WaveformBar: View {
     let audioLevel: Float
     let index: Int
     let totalBars: Int
+    let colors: [Color]
+
+    init(audioLevel: Float, index: Int, totalBars: Int, colors: [Color] = [.blue, .purple]) {
+        self.audioLevel = audioLevel
+        self.index = index
+        self.totalBars = totalBars
+        self.colors = colors
+    }
 
     var body: some View {
         let normalizedIndex = Float(index) / Float(totalBars)
@@ -326,7 +420,7 @@ struct WaveformBar: View {
         return RoundedRectangle(cornerRadius: 1.5)
             .fill(
                 LinearGradient(
-                    colors: [.red, .blue],
+                    colors: colors,
                     startPoint: .bottom,
                     endPoint: .top
                 )
@@ -338,6 +432,11 @@ struct WaveformBar: View {
 
 struct PulsingDotsView: View {
     @State private var isAnimating = false
+    let colors: [Color]
+
+    init(colors: [Color] = [.blue, .purple]) {
+        self.colors = colors
+    }
 
     var body: some View {
         HStack(spacing: 8) {
@@ -345,7 +444,7 @@ struct PulsingDotsView: View {
                 Circle()
                     .fill(
                         LinearGradient(
-                            colors: [.blue, .purple],
+                            colors: colors,
                             startPoint: .leading,
                             endPoint: .trailing
                         )
@@ -367,19 +466,45 @@ struct PulsingDotsView: View {
     }
 }
 
-#Preview("Recording State") {
+#Preview("Recording State - Dictation") {
     let audioManager = AudioRecordingManager()
     let transcriptionService = TranscriptionService()
+    let gptService = GPTService()
     let accessibilityManager = AccessibilityManager()
 
     let viewModel = VoiceOverlayViewModel(
         audioRecordingManager: audioManager,
         transcriptionService: transcriptionService,
+        gptService: gptService,
         accessibilityManager: accessibilityManager
     )
 
     viewModel.isVisible = true
     viewModel.state = .recording
+    viewModel.mode = .dictation
+    audioManager.audioLevel = 0.6
+    audioManager.recordingDuration = 3.5
+
+    return VoiceOverlayView(viewModel: viewModel, audioManager: audioManager)
+        .frame(width: 400, height: 300)
+}
+
+#Preview("Recording State - Command") {
+    let audioManager = AudioRecordingManager()
+    let transcriptionService = TranscriptionService()
+    let gptService = GPTService()
+    let accessibilityManager = AccessibilityManager()
+
+    let viewModel = VoiceOverlayViewModel(
+        audioRecordingManager: audioManager,
+        transcriptionService: transcriptionService,
+        gptService: gptService,
+        accessibilityManager: accessibilityManager
+    )
+
+    viewModel.isVisible = true
+    viewModel.state = .recording
+    viewModel.mode = .command
     audioManager.audioLevel = 0.6
     audioManager.recordingDuration = 3.5
 
@@ -390,16 +515,38 @@ struct PulsingDotsView: View {
 #Preview("Transcribing State") {
     let audioManager = AudioRecordingManager()
     let transcriptionService = TranscriptionService()
+    let gptService = GPTService()
     let accessibilityManager = AccessibilityManager()
 
     let viewModel = VoiceOverlayViewModel(
         audioRecordingManager: audioManager,
         transcriptionService: transcriptionService,
+        gptService: gptService,
         accessibilityManager: accessibilityManager
     )
 
     viewModel.isVisible = true
     viewModel.state = .transcribing
+
+    return VoiceOverlayView(viewModel: viewModel, audioManager: audioManager)
+        .frame(width: 400, height: 300)
+}
+
+#Preview("Command Processing State") {
+    let audioManager = AudioRecordingManager()
+    let transcriptionService = TranscriptionService()
+    let gptService = GPTService()
+    let accessibilityManager = AccessibilityManager()
+
+    let viewModel = VoiceOverlayViewModel(
+        audioRecordingManager: audioManager,
+        transcriptionService: transcriptionService,
+        gptService: gptService,
+        accessibilityManager: accessibilityManager
+    )
+
+    viewModel.isVisible = true
+    viewModel.state = .commandProcessing
 
     return VoiceOverlayView(viewModel: viewModel, audioManager: audioManager)
         .frame(width: 400, height: 300)
