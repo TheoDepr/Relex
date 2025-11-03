@@ -152,21 +152,16 @@ class AccessibilityManager: ObservableObject {
         let axElement = element as! AXUIElement
         print("✅ Got focused element")
 
-        // Try to get selected text first
+        // Only get selected text (not the entire field value)
+        // This is used to determine if user wants command mode vs dictation mode
         if let selectedText = getAttributeValue(axElement, attribute: kAXSelectedTextAttribute) as? String,
            !selectedText.isEmpty {
             print("📝 Got selected text: \"\(selectedText)\"")
             return selectedText
         }
 
-        // Fall back to entire value
-        if let value = getAttributeValue(axElement, attribute: kAXValueAttribute) as? String {
-            print("📝 Got value: \"\(value)\"")
-            return value
-        }
-
-        lastError = "No text found in focused element"
-        print("❌ No text found in focused element")
+        // No text selected - return nil for dictation mode
+        print("📝 No text selected - dictation mode")
         return nil
     }
 

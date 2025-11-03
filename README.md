@@ -3,21 +3,33 @@
 
   # Relex
 
-  **Open Source Voice Dictation**
+  **Open Source Voice Dictation & AI Text Editor**
 
-  Voice dictation for macOS that works in any app - just hold Right Option, speak, and your text appears.
+  Voice dictation and AI-powered text editing for macOS - hold Right Option to dictate or transform selected text with voice commands.
 
-  💻 Fully open source • 🔒 Your data stays private • 💰 Pay only for what you use
+  💻 Fully open source • 🔒 Your data stays private • 💰 Pay only for what you use • 🤖 GPT-powered text transformation
 </div>
 
 ## Features
 
+### Voice Dictation
 - 🌍 **Works Everywhere**: Use in any app - Chrome, Slack, Notes, Terminal, anywhere you can type
 - 🎤 **Accurate Transcription**: Powered by OpenAI's GPT-4o transcription for high-quality speech-to-text
 - ⚡ **Simple & Fast**: Hold Right Option to record, release to transcribe
 - 🎯 **Smart Text Insertion**: Automatically inserts transcribed text at your cursor position
-- 📊 **Usage Tracking**: Monitor your transcription costs and usage statistics
+- 🎨 **Visual Feedback**: Purple-to-blue gradient indicates dictation mode
+
+### AI Text Editing
+- ✨ **Voice-Commanded Text Transformation**: Select text and use voice commands to transform it
+- 🤖 **GPT-Powered**: Uses GPT-4o or GPT-4o-mini to intelligently edit your text
+- 🔄 **Smart Context Awareness**: Preserves formatting, line breaks, and text structure
+- 🎨 **Visual Distinction**: Red-to-yellow gradient indicates command mode
+- 💬 **Natural Commands**: Say things like "make this more formal", "fix grammar", or "simplify this"
+
+### General
+- 📊 **Usage Tracking**: Monitor both transcription and GPT API costs separately
 - 🔒 **Privacy-Focused**: Runs as a menu bar app with secure API key storage in Keychain
+- ⌨️ **Cancellable**: Press Escape at any time to cancel operation
 
 ## Screenshots
 
@@ -52,11 +64,11 @@ Quick reference guide showing keyboard shortcuts and usage instructions.
 
 Manage required permissions for accessibility and microphone access, plus configure your OpenAI API key.
 
-#### Cost Tracking
+#### Models & Usage Statistics
 
-<img src="content/cost_tracking.png" alt="Cost Tracking" width="500"/>
+<img src="content/cost_tracking.png" alt="Models & Usage Statistics" width="500"/>
 
-Monitor your transcription costs and usage statistics in real-time, with the ability to select different GPT-4o transcription models.
+Select your preferred AI models (GPT-4o transcription and GPT chat models) and monitor separate usage statistics for both transcription and text transformation commands in real-time.
 
 ## Requirements
 
@@ -104,53 +116,97 @@ open Relex.xcodeproj
    - Enter your OpenAI API key (get one at <https://platform.openai.com/api-keys>)
    - The key is stored securely in your system's Keychain
 
-4. **Select Transcription Model** (Optional):
-   - Choose between GPT-4o transcription models in Settings:
-   - `gpt-4o-mini-transcribe`: 50% cheaper at $0.003/min
-   - `gpt-4o-transcribe`: Standard quality at $0.006/min
-   - `gpt-4o-transcribe-diarize`: Speaker identification at $0.006/min
+4. **Select Models** (Optional):
+   - **Transcription Model** - Choose between GPT-4o transcription models:
+     - `gpt-4o-mini-transcribe`: 50% cheaper at $0.003/min
+     - `gpt-4o-transcribe`: Standard quality at $0.006/min
+     - `gpt-4o-transcribe-diarize`: Speaker identification at $0.006/min
+   - **GPT Model** - Choose for text transformation commands:
+     - `gpt-4o-mini`: Fast & cheap at ~$0.001 per command
+     - `gpt-4o`: Higher quality at ~$0.01 per command
 
 ## Usage
 
-### Voice Dictation
+Relex has two modes that automatically activate based on whether you have text selected:
 
-1. **Start Recording**: Hold down the **Right Option** key
-   - A floating overlay appears near your cursor with a waveform visualization
-   - Speak clearly into your microphone
+### Voice Dictation Mode (No Text Selected)
 
-2. **Stop & Transcribe**: Release the **Right Option** key
-   - Audio is sent to OpenAI's GPT-4o transcription API
-   - Overlay shows pulsing dots during transcription
-   - Transcribed text is automatically inserted at your cursor position
+Use this mode to insert new text via voice:
 
-3. **Cancel**: Press **Escape** at any time
-   - Works during recording or transcription
-   - Closes overlay without inserting text
+1. **Click in a text field** (don't select any text)
+2. **Hold Right Option** key
+   - Overlay appears with **purple-to-blue** waveform
+3. **Speak your text** clearly
+4. **Release Right Option**
+   - Audio transcribed via GPT-4o transcription
+   - Text automatically inserted at cursor
+5. **Press Escape** to cancel anytime
+
+**Example:** Click in a document, hold Right Option, say "Hello world", release → "Hello world" appears
+
+### AI Text Editing Mode (Text Selected)
+
+Use this mode to transform existing text with voice commands:
+
+1. **Select/highlight text** you want to transform
+2. **Hold Right Option** key
+   - Overlay appears with **red-to-yellow** waveform (indicates command mode)
+3. **Say a command** like:
+   - "make this more formal"
+   - "fix the grammar"
+   - "simplify this"
+   - "make it shorter"
+   - "rewrite this in a friendly tone"
+4. **Release Right Option**
+   - Voice transcribed to command
+   - GPT processes selected text + command
+   - Selected text replaced with result
+5. **Press Escape** to cancel anytime
+
+**Example:** Select "the cat sat on mat", hold Right Option, say "fix grammar", release → "The cat sat on the mat."
 
 ### How It Works
 
-1. Hold Right Option → Audio recording starts with waveform visualization
-2. Release Right Option → Audio is transcribed via OpenAI GPT-4o transcription API
-3. Text is automatically inserted at cursor position using:
-   - **Native macOS Apps**: Accessibility APIs for instant insertion
-   - **Web Browsers**: Character-by-character keyboard simulation for compatibility
-4. Press Escape anytime to cancel
+**Dictation Mode (No Selection):**
+1. Hold Right Option → Recording starts (purple-to-blue overlay)
+2. Release Right Option → GPT-4o transcribes audio
+3. Text inserted at cursor position
+
+**Command Mode (Text Selected):**
+1. Select text → Hold Right Option → Recording starts (red-to-yellow overlay)
+2. Release Right Option → GPT-4o transcribes voice command
+3. GPT-4o processes: selected text + command → transformation
+4. Original text replaced with GPT result
+
+**Text Insertion Methods:**
+- **Native macOS Apps**: Accessibility APIs for instant insertion
+- **Web Browsers**: Clipboard paste simulation for compatibility
 
 ### Usage Tracking
 
-- View real-time statistics in Settings:
-  - Total cost of API calls
-  - Number of transcription requests
-  - Total minutes of audio transcribed
-- Reset statistics anytime using the Reset button
+View separate statistics for each API in Settings:
+
+**Transcription Usage (GPT-4o Transcription):**
+- Total cost, number of requests, minutes transcribed
+- Per-model breakdown
+
+**GPT Usage (Text Commands):**
+- Total cost, number of commands, tokens used
+- Per-model breakdown
+
+Reset all statistics anytime with the Reset button
 
 ## Keyboard Shortcuts
 
-### Voice Dictation
+### Voice Operations
 
 - **Hold Right Option**: Start voice recording
-- **Release Right Option**: Stop recording and transcribe
-- **Escape**: Cancel recording or transcription
+  - No text selected → Dictation mode (purple-to-blue overlay)
+  - Text selected → Command mode (red-to-yellow overlay)
+- **Release Right Option**: Stop recording and process
+  - Dictation mode → Transcribe and insert text
+  - Command mode → Transcribe command and transform selected text
+- **Escape**: Cancel operation at any time (recording, transcribing, or processing)
 
 ### Menu Bar
 
@@ -186,8 +242,11 @@ Relex is designed with security and privacy as top priorities, making it safe fo
 
 ### OpenAI API Usage
 - **Your Own API Key**: You control your OpenAI account and can review all API usage
+- **Two API Services**:
+  - GPT-4o Transcription API for voice-to-text (dictation mode)
+  - GPT-4o Chat API for text transformation (command mode)
 - **Direct Billing**: You pay OpenAI directly - no markup or hidden fees
-- **Usage Transparency**: Built-in cost tracking shows exactly what you're spending
+- **Usage Transparency**: Built-in cost tracking shows exactly what you're spending for each service
 - **Standard OpenAI Terms**: Subject to [OpenAI's API Terms](https://openai.com/policies/terms-of-use) and [Privacy Policy](https://openai.com/policies/privacy-policy)
 
 ### Compliance & Auditing
@@ -206,4 +265,4 @@ Contributions are welcome! Please feel free to submit issues or pull requests.
 
 ## Credits
 
-Built with Swift, SwiftUI, and OpenAI's GPT-4o transcription API.
+Built with Swift, SwiftUI, and OpenAI's GPT-4o API for transcription and intelligent text transformation.

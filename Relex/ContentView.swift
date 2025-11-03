@@ -11,10 +11,12 @@ struct ContentView: View {
     @ObservedObject var accessibilityManager: AccessibilityManager
     @ObservedObject var audioRecordingManager: AudioRecordingManager
     @ObservedObject var transcriptionService: TranscriptionService
+    @ObservedObject var gptService: GPTService
 
     @State private var apiKey: String = ""
     @State private var showAPIKeyInput = false
     @State private var usageStatistics = UsageTracker.shared.getStatistics()
+    @State private var gptStatistics = UsageTracker.shared.getGPTStatistics()
     @State private var refreshTimer: Timer?
 
     var body: some View {
@@ -36,19 +38,40 @@ struct ContentView: View {
                 VStack(spacing: 0) {
                     SectionHeader(title: "How to Use")
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 16) {
                         // Voice Dictation
                         InstructionBlock(
-                            title: "Voice Dictation:",
+                            title: "Voice Dictation (No Selection):",
                             icon: "waveform",
                             iconColor: .purple,
                             steps: [
-                                ("1", "Hold Right Option key to start recording"),
-                                ("2", "Speak your text clearly"),
-                                ("3", "Release Right Option to transcribe and insert"),
-                                ("4", "Press Escape anytime to cancel")
+                                ("1", "Click in any text field (no text selected)"),
+                                ("2", "Hold Right Option key to start recording"),
+                                ("3", "Speak your text clearly"),
+                                ("4", "Release Right Option to transcribe and insert")
                             ]
                         )
+
+                        Divider()
+                            .padding(.horizontal, 8)
+
+                        // AI Text Commands
+                        InstructionBlock(
+                            title: "AI Text Commands (With Selection):",
+                            icon: "wand.and.stars",
+                            iconColor: .orange,
+                            steps: [
+                                ("1", "Select/highlight text you want to transform"),
+                                ("2", "Hold Right Option key to start recording"),
+                                ("3", "Say a command (e.g., \"make this formal\")"),
+                                ("4", "Release Right Option - GPT transforms the text")
+                            ]
+                        )
+
+                        Text("Press Escape anytime to cancel")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.top, 4)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
@@ -113,25 +136,25 @@ struct ContentView: View {
                 .cornerRadius(12)
                 .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
-                // Model Selection & Usage Section
+                // Model Selection Section
                 VStack(spacing: 0) {
-                    SectionHeader(title: "Transcription Model & Usage")
+                    SectionHeader(title: "Models")
 
                     VStack(spacing: 16) {
-                        // Model Selection
+                        // Transcription Model Selection
                         HStack(spacing: 12) {
-                            Image(systemName: "cpu.fill")
+                            Image(systemName: "waveform")
                                 .font(.system(size: 20))
-                                .foregroundColor(.blue)
+                                .foregroundColor(.purple)
                                 .frame(width: 32, height: 32)
-                                .background(Color.blue.opacity(0.1))
+                                .background(Color.purple.opacity(0.1))
                                 .cornerRadius(8)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Transcription Model")
                                     .font(.body)
                                     .fontWeight(.medium)
-                                Text("Choose quality vs cost")
+                                Text("For voice-to-text")
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
                             }
@@ -156,7 +179,54 @@ struct ContentView: View {
 
                         Divider()
 
-                        // Usage Statistics
+                        // GPT Model Selection
+                        HStack(spacing: 12) {
+                            Image(systemName: "wand.and.stars")
+                                .font(.system(size: 20))
+                                .foregroundColor(.orange)
+                                .frame(width: 32, height: 32)
+                                .background(Color.orange.opacity(0.1))
+                                .cornerRadius(8)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("GPT Model")
+                                    .font(.body)
+                                    .fontWeight(.medium)
+                                Text("For text commands")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            Picker("", selection: $gptService.selectedModel) {
+                                ForEach(GPTModel.allCases, id: \.self) { model in
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(model.displayName)
+                                            .font(.body)
+                                        Text(model.description)
+                                            .font(.caption2)
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .tag(model)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                            .frame(width: 250)
+                        }
+                    }
+                    .padding(14)
+                }
+                .background(Color(nsColor: .controlBackgroundColor))
+                .cornerRadius(12)
+                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
+
+                // Usage Statistics Section
+                VStack(spacing: 0) {
+                    SectionHeader(title: "Usage Statistics")
+
+                    VStack(spacing: 16) {
+                        // Transcription Usage
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 12) {
                                 Image(systemName: "chart.bar.fill")
@@ -167,10 +237,10 @@ struct ContentView: View {
                                     .cornerRadius(8)
 
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text("Usage & Costs")
+                                    Text("Transcription Usage")
                                         .font(.body)
                                         .fontWeight(.medium)
-                                    Text("All-time statistics")
+                                    Text("Voice-to-text costs")
                                         .font(.caption2)
                                         .foregroundColor(.secondary)
                                 }
@@ -183,7 +253,7 @@ struct ContentView: View {
                                 }) {
                                     HStack(spacing: 4) {
                                         Image(systemName: "trash")
-                                        Text("Reset")
+                                        Text("Reset All")
                                     }
                                     .font(.caption)
                                 }
@@ -194,7 +264,7 @@ struct ContentView: View {
                             // Statistics Grid
                             HStack(spacing: 12) {
                                 UsageStatCard(
-                                    title: "Total Cost",
+                                    title: "Cost",
                                     value: String(format: "$%.4f", usageStatistics.totalCost),
                                     icon: "dollarsign.circle.fill",
                                     color: .green
@@ -211,7 +281,56 @@ struct ContentView: View {
                                     title: "Minutes",
                                     value: String(format: "%.1f", usageStatistics.totalMinutes),
                                     icon: "clock.fill",
+                                    color: .purple
+                                )
+                            }
+                        }
+
+                        Divider()
+
+                        // GPT Usage
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack(spacing: 12) {
+                                Image(systemName: "sparkles")
+                                    .font(.system(size: 20))
+                                    .foregroundColor(.orange)
+                                    .frame(width: 32, height: 32)
+                                    .background(Color.orange.opacity(0.1))
+                                    .cornerRadius(8)
+
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text("GPT Usage")
+                                        .font(.body)
+                                        .fontWeight(.medium)
+                                    Text("Text command costs")
+                                        .font(.caption2)
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+                            }
+
+                            // Statistics Grid
+                            HStack(spacing: 12) {
+                                UsageStatCard(
+                                    title: "Cost",
+                                    value: String(format: "$%.4f", gptStatistics.totalCost),
+                                    icon: "dollarsign.circle.fill",
+                                    color: .green
+                                )
+
+                                UsageStatCard(
+                                    title: "Commands",
+                                    value: "\(gptStatistics.totalRequests)",
+                                    icon: "wand.and.stars",
                                     color: .orange
+                                )
+
+                                UsageStatCard(
+                                    title: "Tokens",
+                                    value: String(format: "%.0fk", Double(gptStatistics.totalTokens) / 1000.0),
+                                    icon: "number.circle.fill",
+                                    color: .blue
                                 )
                             }
                         }
@@ -279,6 +398,7 @@ struct ContentView: View {
 
     private func refreshUsageStats() {
         usageStatistics = UsageTracker.shared.getStatistics()
+        gptStatistics = UsageTracker.shared.getGPTStatistics()
     }
 }
 
@@ -513,6 +633,7 @@ struct APIKeyInputView: View {
     ContentView(
         accessibilityManager: AccessibilityManager(),
         audioRecordingManager: AudioRecordingManager(),
-        transcriptionService: TranscriptionService()
+        transcriptionService: TranscriptionService(),
+        gptService: GPTService()
     )
 }
