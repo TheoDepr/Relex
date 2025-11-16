@@ -80,10 +80,27 @@ Select your preferred AI models (GPT-4o transcription and GPT chat models) and m
 
 ## Installation
 
+### Via Homebrew (Recommended)
+
+The easiest way to install Relex:
+
+```bash
+brew tap theodepr/tap
+brew install --cask relex
+```
+
+That's it! Relex will be installed to your Applications folder and you can launch it from Spotlight or Launchpad. Look for the **star icon** in your menu bar.
+
+### Manual Installation
+
+Alternatively, you can install manually:
+
 1. **Download** the latest release from [GitHub Releases](https://github.com/TheoDepr/Relex/releases)
-2. **Unzip** `Relex.app.zip`
-3. **Move** `Relex.app` to your Applications folder
-4. **Launch** Relex (right-click and select "Open" the first time to bypass Gatekeeper)
+   - Available as `.dmg` installer or `Relex.app.zip`
+2. **Install**:
+   - If using `.dmg`: Open the DMG and drag Relex to Applications folder
+   - If using `.zip`: Unzip `Relex.app.zip` and move `Relex.app` to Applications folder
+3. **Launch** Relex (right-click and select "Open" the first time to bypass Gatekeeper)
 
    If you see this warning when trying to open Relex:
 
@@ -96,9 +113,9 @@ Select your preferred AI models (GPT-4o transcription and GPT chat models) and m
 
    <img src="content/relex_open_anyway.png" alt="Open Anyway in Security Settings" width="500"/>
 
-5. Look for the **star icon** in your menu bar
+4. Look for the **star icon** in your menu bar
 
-### Building from Source (Optional)
+### Building from Source
 
 If you prefer to build from source:
 
