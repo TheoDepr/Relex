@@ -84,6 +84,18 @@ Select your preferred AI models (GPT-4o transcription and GPT chat models) and m
 2. **Unzip** `Relex.app.zip`
 3. **Move** `Relex.app` to your Applications folder
 4. **Launch** Relex (right-click and select "Open" the first time to bypass Gatekeeper)
+
+   If you see this warning when trying to open Relex:
+
+   <img src="content/cannot_open.png" alt="Cannot Open Warning" width="400"/>
+
+   Follow these steps:
+   - Open **System Settings** → **Privacy & Security**
+   - Scroll down to the Security section
+   - Click **"Open Anyway"** next to the Relex warning
+
+   <img src="content/relex_open_anyway.png" alt="Open Anyway in Security Settings" width="500"/>
+
 5. Look for the **star icon** in your menu bar
 
 ### Building from Source (Optional)
