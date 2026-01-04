@@ -8,8 +8,10 @@ class HotkeyManager {
     private var hotKeyID = EventHotKeyID(signature: OSType("RELX".fourCharCodeValue), id: 1)
     private var hotKeyRef: EventHotKeyRef?
     private var eventTap: CFMachPort?
+    private var runLoopSource: CFRunLoopSource?
     private var isRightOptionPressed = false
     private var isVoiceOperationActive = false // Track if recording or transcribing
+    private var isMonitoringKeyDown = false // Track if we're monitoring keyDown events
     private var lastRightOptionEventTime: TimeInterval = 0
     private let debounceInterval: TimeInterval = 0.1 // 100ms debounce
     private var eventTapMonitorTimer: Timer?
@@ -40,24 +42,26 @@ class HotkeyManager {
             }
         }
 
-        // Listen for voice operation completion to clear the active flag
+        // Listen for voice operation completion to clear the active flag and reduce event tap scope
         NotificationCenter.default.addObserver(
             forName: .voiceOperationCompleted,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             self?.isVoiceOperationActive = false
-            print("✅ Voice operation completed - Escape key will no longer be intercepted")
+            self?.switchToLightweightEventTap()
+            print("✅ Voice operation completed - switched to lightweight event tap")
         }
 
-        // Listen for voice operation cancellation to clear the active flag
+        // Listen for voice operation cancellation to clear the active flag and reduce event tap scope
         NotificationCenter.default.addObserver(
             forName: .voiceRecordingCanceled,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             self?.isVoiceOperationActive = false
-            print("🚫 Voice operation canceled - Escape key will no longer be intercepted")
+            self?.switchToLightweightEventTap()
+            print("🚫 Voice operation canceled - switched to lightweight event tap")
         }
     }
 
@@ -70,7 +74,8 @@ class HotkeyManager {
 
         // Start Right Option key monitoring (requires accessibility)
         if hasAccessibility {
-            setupRightOptionMonitoring()
+            // Start with lightweight tap (no keyDown monitoring until voice operation starts)
+            setupRightOptionMonitoring(includeKeyDown: false)
         } else {
             print("⚠️ Skipping Right Option monitoring - accessibility permission not granted")
             print("💡 Event tap will be initialized when accessibility permission is granted")
@@ -91,7 +96,8 @@ class HotkeyManager {
         // If we have accessibility but no event tap, set it up
         if hasAccessibility {
             print("🔄 Reinitializing event tap (accessibility now available)")
-            setupRightOptionMonitoring()
+            // Start with lightweight tap
+            setupRightOptionMonitoring(includeKeyDown: false)
         }
     }
 
@@ -99,19 +105,15 @@ class HotkeyManager {
     func forceReinitializeEventTap() {
         print("🔧 Force reinitializing event tap")
 
-        // Clean up existing tap if any
-        if let tap = eventTap {
-            print("🗑️ Cleaning up existing event tap")
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
-            eventTap = nil
-        }
+        // Clean up existing tap
+        cleanupEventTap()
 
         // Try to set up again
         let hasAccessibility = AXIsProcessTrusted()
         if hasAccessibility {
             print("✅ Accessibility granted - setting up Right Option monitoring")
-            setupRightOptionMonitoring()
+            // Start with lightweight tap (no keyDown monitoring)
+            setupRightOptionMonitoring(includeKeyDown: false)
         } else {
             print("❌ Cannot set up event tap - accessibility permission still not granted")
         }
@@ -135,21 +137,25 @@ class HotkeyManager {
         }
     }
 
-    private func setupRightOptionMonitoring() {
-        print("🔧 Setting up Right Option monitoring...")
+    /// Sets up the event tap with the specified scope
+    /// - Parameter includeKeyDown: If true, monitors keyDown events for Escape key. If false, only monitors flagsChanged.
+    private func setupRightOptionMonitoring(includeKeyDown: Bool = false) {
+        print("🔧 Setting up Right Option monitoring (includeKeyDown: \(includeKeyDown))...")
 
-        // Disable old tap if exists
-        if let tap = eventTap {
-            print("🔧 Disabling existing HotkeyManager event tap")
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
-            eventTap = nil
+        // Clean up existing tap if any
+        cleanupEventTap()
+
+        // Build event mask based on scope
+        // Always monitor flagsChanged for Right Option key
+        var eventMask = 1 << CGEventType.flagsChanged.rawValue
+        
+        // Only add keyDown monitoring when voice operation is active (for Escape key)
+        if includeKeyDown {
+            eventMask |= 1 << CGEventType.keyDown.rawValue
         }
-
-        // Monitor flags changed events for modifier keys AND key down for Escape
-        let eventMask = (1 << CGEventType.flagsChanged.rawValue) | (1 << CGEventType.keyDown.rawValue)
-
-        print("🔧 Creating event tap with mask: \(eventMask)")
+        
+        isMonitoringKeyDown = includeKeyDown
+        print("🔧 Creating event tap with mask: \(eventMask) (keyDown: \(includeKeyDown))")
 
         let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -165,53 +171,43 @@ class HotkeyManager {
                 let flags = event.flags
                 let eventType = event.type
 
-                // Handle key down events (for Escape)
+                // Handle key down events (for Escape) - only when monitoring keyDown
                 if eventType == .keyDown {
                     // Escape key code is 53
-                    if keyCode == 53 {
-                        // Only intercept Escape if there's an active voice operation
-                        if manager.isVoiceOperationActive {
-                            print("⎋ Escape pressed - canceling voice operation")
-                            if manager.isRightOptionPressed {
-                                manager.isRightOptionPressed = false
-                            }
-                            NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
-                            return nil // Consume the escape key
-                        } else {
-                            // No active voice operation - let Escape pass through
-                            return Unmanaged.passRetained(event)
+                    if keyCode == 53 && manager.isVoiceOperationActive {
+                        print("⎋ Escape pressed - canceling voice operation")
+                        if manager.isRightOptionPressed {
+                            manager.isRightOptionPressed = false
                         }
+                        NotificationCenter.default.post(name: .voiceRecordingCanceled, object: nil)
+                        return nil // Consume the escape key
                     }
                     return Unmanaged.passRetained(event)
                 }
 
                 // Handle flags changed events (for modifier keys)
                 if eventType == .flagsChanged {
-                    // Debug: Log ALL flagsChanged events to see what we're getting
-                    print("🔍 FlagsChanged event - keyCode: \(keyCode), flags: \(flags.rawValue)")
-
                     // Right Option key code is 61 (0x3D)
-                    // Left Option is 58 (0x3A) - for comparison
                     if keyCode == 61 {
                         // Check if the alternate flag is set (key is pressed)
                         let isPressed = flags.contains(.maskAlternate)
                         let currentTime = Date().timeIntervalSince1970
 
-                        print("🔍 Right Option event - isPressed: \(isPressed), wasPressed: \(manager.isRightOptionPressed)")
-
                         // Debounce rapid flag changes to prevent duplicate events
                         guard currentTime - manager.lastRightOptionEventTime >= manager.debounceInterval else {
-                            print("⏭️ Debouncing Right Option event (too soon)")
                             return Unmanaged.passRetained(event)
                         }
 
                         if isPressed && !manager.isRightOptionPressed {
-                            // Right Option pressed
+                            // Right Option pressed - start voice operation and enable keyDown monitoring
                             manager.isRightOptionPressed = true
                             manager.isVoiceOperationActive = true
                             manager.lastRightOptionEventTime = currentTime
                             print("🎤 Right Option key pressed (keyCode: \(keyCode))")
-                            print("🔒 Voice operation started - Escape key will be intercepted")
+                            
+                            // Switch to full event tap (with keyDown) for Escape key support
+                            manager.switchToFullEventTap()
+                            
                             NotificationCenter.default.post(name: .voiceRecordingStarted, object: nil)
                         } else if !isPressed && manager.isRightOptionPressed {
                             // Right Option released
@@ -242,21 +238,49 @@ class HotkeyManager {
         print("🔧 Event tap created successfully")
 
         // Create run loop source
-        guard let runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
+        guard let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0) else {
             print("❌ Failed to create run loop source")
             CFMachPortInvalidate(tap)
             return
         }
 
         print("🔧 Adding event tap to run loop")
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
+        CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
 
         print("🔧 Enabling event tap")
         CGEvent.tapEnable(tap: tap, enable: true)
 
         eventTap = tap
-        print("✅ Right Option key monitoring enabled successfully")
-        print("✅ Event tap is active and listening for Right Option key (keyCode 61)")
+        runLoopSource = source
+        print("✅ Right Option key monitoring enabled (keyDown: \(includeKeyDown))")
+    }
+    
+    /// Cleans up the current event tap
+    private func cleanupEventTap() {
+        if let source = runLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            runLoopSource = nil
+        }
+        
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+            eventTap = nil
+        }
+    }
+    
+    /// Switches to full event tap (flagsChanged + keyDown) for Escape key support
+    private func switchToFullEventTap() {
+        guard !isMonitoringKeyDown else { return } // Already monitoring keyDown
+        print("🔄 Switching to full event tap (adding keyDown monitoring)")
+        setupRightOptionMonitoring(includeKeyDown: true)
+    }
+    
+    /// Switches to lightweight event tap (flagsChanged only) when voice operation ends
+    private func switchToLightweightEventTap() {
+        guard isMonitoringKeyDown else { return } // Already lightweight
+        print("🔄 Switching to lightweight event tap (removing keyDown monitoring)")
+        setupRightOptionMonitoring(includeKeyDown: false)
     }
 
     func stopListening() {
@@ -270,11 +294,7 @@ class HotkeyManager {
             self.eventHandler = nil
         }
 
-        if let tap = eventTap {
-            CGEvent.tapEnable(tap: tap, enable: false)
-            CFMachPortInvalidate(tap)
-            eventTap = nil
-        }
+        cleanupEventTap()
 
         eventTapMonitorTimer?.invalidate()
         eventTapMonitorTimer = nil

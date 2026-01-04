@@ -15,46 +15,48 @@ class AccessibilityManager: ObservableObject {
     @Published var isAccessibilityGranted = false
     @Published var lastError: String?
 
-    private var permissionCheckTimer: Timer?
-
     init() {
-        // Force check on main thread
-        Task { @MainActor in
-            checkAccessibility()
-            startMonitoringPermissions()
-            setupAppActivationMonitoring()
+        // Sync with shared PermissionMonitor
+        isAccessibilityGranted = PermissionMonitor.shared.isAccessibilityGranted
+        
+        // Observe permission changes from shared monitor
+        NotificationCenter.default.addObserver(
+            forName: .accessibilityPermissionGranted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            MainActor.assumeIsolated {
+                self.isAccessibilityGranted = true
+            }
         }
-    }
-
-    deinit {
-        permissionCheckTimer?.invalidate()
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    private func setupAppActivationMonitoring() {
-        // Monitor when app becomes active to immediately recheck permissions
+        
+        // Also listen for general permission check updates
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            Task { @MainActor [weak self] in
-                self?.checkAccessibility()
+            MainActor.assumeIsolated {
+                self.isAccessibilityGranted = PermissionMonitor.shared.isAccessibilityGranted
             }
         }
     }
 
-    func checkAccessibility() {
-        isAccessibilityGranted = AXIsProcessTrusted()
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 
-    func requestAccessibility() {
-        let options = [kAXTrustedCheckOptionPrompt.takeRetainedValue() as String: true] as CFDictionary
-        isAccessibilityGranted = AXIsProcessTrustedWithOptions(options)
+    /// Check and sync accessibility permission status with shared PermissionMonitor
+    func checkAccessibility() {
+        PermissionMonitor.shared.checkAllPermissions()
+        isAccessibilityGranted = PermissionMonitor.shared.isAccessibilityGranted
+    }
 
-        // Start polling for permission changes
-        startMonitoringPermissions()
+    /// Request accessibility permission via shared PermissionMonitor
+    func requestAccessibility() {
+        PermissionMonitor.shared.requestAccessibility()
 
         // Show alert to user about restarting
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
@@ -88,15 +90,6 @@ class AccessibilityManager: ObservableObject {
         task.arguments = [path]
         task.launch()
         exit(0)
-    }
-
-    private func startMonitoringPermissions() {
-        permissionCheckTimer?.invalidate()
-        permissionCheckTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.checkAccessibility()
-            }
-        }
     }
 
     // MARK: - Cursor Position

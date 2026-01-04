@@ -7,6 +7,46 @@
 
 import SwiftUI
 
+// MARK: - Liquid Glass View Modifier with Backward Compatibility
+
+/// A view modifier that applies Liquid Glass on macOS 26+ with fallback for older versions
+struct LiquidGlassModifier<S: Shape>: ViewModifier {
+    let shape: S
+    let isInteractive: Bool
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            if isInteractive {
+                content.glassEffect(.regular.interactive(), in: shape)
+            } else {
+                content.glassEffect(.regular, in: shape)
+            }
+        } else {
+            // Fallback for older macOS versions
+            content
+                .background(.ultraThinMaterial, in: shape)
+                .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
+        }
+    }
+}
+
+extension View {
+    /// Applies Liquid Glass effect with capsule shape
+    func liquidGlassCapsule(interactive: Bool = false) -> some View {
+        modifier(LiquidGlassModifier(shape: Capsule(), isInteractive: interactive))
+    }
+
+    /// Applies Liquid Glass effect with rounded rectangle
+    func liquidGlassRounded(cornerRadius: CGFloat, interactive: Bool = false) -> some View {
+        modifier(LiquidGlassModifier(shape: RoundedRectangle(cornerRadius: cornerRadius), isInteractive: interactive))
+    }
+
+    /// Applies Liquid Glass effect with circle shape
+    func liquidGlassCircle(interactive: Bool = false) -> some View {
+        modifier(LiquidGlassModifier(shape: Circle(), isInteractive: interactive))
+    }
+}
+
 struct ContentView: View {
     @ObservedObject var accessibilityManager: AccessibilityManager
     @ObservedObject var audioRecordingManager: AudioRecordingManager
@@ -17,26 +57,29 @@ struct ContentView: View {
     @State private var showAPIKeyInput = false
     @State private var usageStatistics = UsageTracker.shared.getStatistics()
     @State private var gptStatistics = UsageTracker.shared.getGPTStatistics()
-    @State private var refreshTimer: Timer?
+    @State private var usageObserver: NSObjectProtocol?
 
     var body: some View {
         ScrollView {
             VStack(spacing: 20) {
-                // Header
+                // Header with Liquid Glass
                 VStack(spacing: 4) {
                     Text("Relex")
-                        .font(.system(size: 28, weight: .semibold, design: .default))
+                        .font(.system(size: 28, weight: .semibold, design: .rounded))
                         .tracking(-0.5)
 
                     Text("Voice Dictation Assistant")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
+                .padding(.vertical, 12)
+                .padding(.horizontal, 24)
+                .liquidGlassCapsule(interactive: true)
                 .padding(.bottom, 4)
 
                 // Instructions Section
-                VStack(spacing: 0) {
-                    SectionHeader(title: "How to Use")
+                GlassSection {
+                    SectionHeader(title: "How to Use", icon: "book.fill", iconColor: .blue)
 
                     VStack(alignment: .leading, spacing: 16) {
                         // Voice Dictation
@@ -53,7 +96,7 @@ struct ContentView: View {
                         )
 
                         Divider()
-                            .padding(.horizontal, 8)
+                            .opacity(0.5)
 
                         // AI Text Commands
                         InstructionBlock(
@@ -76,13 +119,10 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
                 // Permissions Section
-                VStack(spacing: 0) {
-                    SectionHeader(title: "Permissions")
+                GlassSection {
+                    SectionHeader(title: "Permissions", icon: "shield.fill", iconColor: .green)
 
                     VStack(spacing: 0) {
                         PermissionRow(
@@ -99,6 +139,7 @@ struct ContentView: View {
 
                         Divider()
                             .padding(.leading, 48)
+                            .opacity(0.5)
 
                         PermissionRow(
                             icon: "mic.fill",
@@ -114,6 +155,7 @@ struct ContentView: View {
 
                         Divider()
                             .padding(.leading, 48)
+                            .opacity(0.5)
 
                         PermissionRow(
                             icon: "key.fill",
@@ -132,23 +174,15 @@ struct ContentView: View {
                     }
                     .padding(14)
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
                 // Model Selection Section
-                VStack(spacing: 0) {
-                    SectionHeader(title: "Models")
+                GlassSection {
+                    SectionHeader(title: "Models", icon: "cpu.fill", iconColor: .purple)
 
                     VStack(spacing: 16) {
                         // Transcription Model Selection
                         HStack(spacing: 12) {
-                            Image(systemName: "waveform")
-                                .font(.system(size: 20))
-                                .foregroundColor(.purple)
-                                .frame(width: 32, height: 32)
-                                .background(Color.purple.opacity(0.1))
-                                .cornerRadius(8)
+                            GlassIconBadge(icon: "waveform", color: .purple)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("Transcription Model")
@@ -178,15 +212,11 @@ struct ContentView: View {
                         }
 
                         Divider()
+                            .opacity(0.5)
 
                         // GPT Model Selection
                         HStack(spacing: 12) {
-                            Image(systemName: "wand.and.stars")
-                                .font(.system(size: 20))
-                                .foregroundColor(.orange)
-                                .frame(width: 32, height: 32)
-                                .background(Color.orange.opacity(0.1))
-                                .cornerRadius(8)
+                            GlassIconBadge(icon: "wand.and.stars", color: .orange)
 
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("GPT Model")
@@ -217,24 +247,16 @@ struct ContentView: View {
                     }
                     .padding(14)
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
                 // Usage Statistics Section
-                VStack(spacing: 0) {
-                    SectionHeader(title: "Usage Statistics")
+                GlassSection {
+                    SectionHeader(title: "Usage Statistics", icon: "chart.bar.fill", iconColor: .cyan)
 
                     VStack(spacing: 16) {
                         // Transcription Usage
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 12) {
-                                Image(systemName: "chart.bar.fill")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.purple)
-                                    .frame(width: 32, height: 32)
-                                    .background(Color.purple.opacity(0.1))
-                                    .cornerRadius(8)
+                                GlassIconBadge(icon: "chart.bar.fill", color: .purple)
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("Transcription Usage")
@@ -261,23 +283,23 @@ struct ContentView: View {
                                 .controlSize(.small)
                             }
 
-                            // Statistics Grid
+                            // Statistics Grid with Glass Cards
                             HStack(spacing: 12) {
-                                UsageStatCard(
+                                GlassStatCard(
                                     title: "Cost",
                                     value: String(format: "$%.4f", usageStatistics.totalCost),
                                     icon: "dollarsign.circle.fill",
                                     color: .green
                                 )
 
-                                UsageStatCard(
+                                GlassStatCard(
                                     title: "Requests",
                                     value: "\(usageStatistics.totalRequests)",
                                     icon: "mic.circle.fill",
                                     color: .blue
                                 )
 
-                                UsageStatCard(
+                                GlassStatCard(
                                     title: "Minutes",
                                     value: String(format: "%.1f", usageStatistics.totalMinutes),
                                     icon: "clock.fill",
@@ -287,16 +309,12 @@ struct ContentView: View {
                         }
 
                         Divider()
+                            .opacity(0.5)
 
                         // GPT Usage
                         VStack(alignment: .leading, spacing: 12) {
                             HStack(spacing: 12) {
-                                Image(systemName: "sparkles")
-                                    .font(.system(size: 20))
-                                    .foregroundColor(.orange)
-                                    .frame(width: 32, height: 32)
-                                    .background(Color.orange.opacity(0.1))
-                                    .cornerRadius(8)
+                                GlassIconBadge(icon: "sparkles", color: .orange)
 
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text("GPT Usage")
@@ -310,23 +328,23 @@ struct ContentView: View {
                                 Spacer()
                             }
 
-                            // Statistics Grid
+                            // Statistics Grid with Glass Cards
                             HStack(spacing: 12) {
-                                UsageStatCard(
+                                GlassStatCard(
                                     title: "Cost",
                                     value: String(format: "$%.4f", gptStatistics.totalCost),
                                     icon: "dollarsign.circle.fill",
                                     color: .green
                                 )
 
-                                UsageStatCard(
+                                GlassStatCard(
                                     title: "Commands",
                                     value: "\(gptStatistics.totalRequests)",
                                     icon: "wand.and.stars",
                                     color: .orange
                                 )
 
-                                UsageStatCard(
+                                GlassStatCard(
                                     title: "Tokens",
                                     value: String(format: "%.0fk", Double(gptStatistics.totalTokens) / 1000.0),
                                     icon: "number.circle.fill",
@@ -337,9 +355,6 @@ struct ContentView: View {
                     }
                     .padding(14)
                 }
-                .background(Color(nsColor: .controlBackgroundColor))
-                .cornerRadius(12)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, y: 2)
 
                 // Footer
                 VStack(spacing: 4) {
@@ -353,9 +368,25 @@ struct ContentView: View {
                         .font(.caption2)
                         .foregroundColor(.secondary)
                 }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .liquidGlassCapsule()
                 .padding(.top, 4)
             }
             .padding(24)
+        }
+        .background {
+            // Ambient gradient background to make glass effects pop
+            LinearGradient(
+                colors: [
+                    Color.purple.opacity(0.08),
+                    Color.blue.opacity(0.05),
+                    Color.orange.opacity(0.06)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
         }
         .frame(minWidth: 480, idealWidth: 480, minHeight: 650, maxHeight: 650)
         .sheet(isPresented: $showAPIKeyInput) {
@@ -379,14 +410,28 @@ struct ContentView: View {
             // Load usage stats
             refreshUsageStats()
 
-            // Set up periodic refresh for usage stats (every 2 seconds)
-            refreshTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
+            // Post notification that settings window has opened
+            NotificationCenter.default.post(name: NSNotification.Name("SettingsWindowOpened"), object: nil)
+
+            // Listen for usage stats updates (event-driven, no polling)
+            // Store the observer reference so we can properly remove it later
+            usageObserver = NotificationCenter.default.addObserver(
+                forName: NSNotification.Name("UsageStatsUpdated"),
+                object: nil,
+                queue: .main
+            ) { _ in
                 refreshUsageStats()
             }
         }
         .onDisappear {
-            refreshTimer?.invalidate()
-            refreshTimer = nil
+            // Post notification that settings window has closed
+            NotificationCenter.default.post(name: NSNotification.Name("SettingsWindowClosed"), object: nil)
+
+            // Remove observer using the stored reference
+            if let observer = usageObserver {
+                NotificationCenter.default.removeObserver(observer)
+                usageObserver = nil
+            }
         }
         .onChange(of: showAPIKeyInput) { _, newValue in
             if newValue {
@@ -402,13 +447,76 @@ struct ContentView: View {
     }
 }
 
+// MARK: - Liquid Glass Components
+
+/// A container that applies the Liquid Glass effect to its content
+struct GlassSection<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .liquidGlassRounded(cornerRadius: 16)
+    }
+}
+
+/// Icon badge with glass effect
+struct GlassIconBadge: View {
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        Image(systemName: icon)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(color)
+            .frame(width: 32, height: 32)
+            .liquidGlassRounded(cornerRadius: 8)
+    }
+}
+
+/// Stat card with liquid glass effect
+struct GlassStatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(color)
+                Text(title)
+                    .font(.caption2)
+                    .foregroundColor(.secondary)
+            }
+
+            Text(value)
+                .font(.system(size: 18, weight: .semibold, design: .rounded))
+                .foregroundColor(.primary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .liquidGlassRounded(cornerRadius: 10)
+    }
+}
+
 // MARK: - Helper Components
 
 struct SectionHeader: View {
     let title: String
+    var icon: String? = nil
+    var iconColor: Color = .primary
 
     var body: some View {
-        HStack {
+        HStack(spacing: 8) {
+            if let icon = icon {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(iconColor)
+            }
             Text(title)
                 .font(.subheadline)
                 .fontWeight(.semibold)
@@ -416,7 +524,7 @@ struct SectionHeader: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
+        .background(.ultraThinMaterial.opacity(0.3))
     }
 }
 
@@ -481,14 +589,18 @@ struct StatusBadge: View {
     let text: String
 
     var body: some View {
-        Text(text)
-            .font(.caption)
-            .fontWeight(.medium)
-            .foregroundColor(status ? .green : .orange)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(status ? Color.green.opacity(0.12) : Color.orange.opacity(0.12))
-            .cornerRadius(8)
+        HStack(spacing: 4) {
+            Circle()
+                .fill(status ? Color.green : Color.orange)
+                .frame(width: 6, height: 6)
+            Text(text)
+                .font(.caption)
+                .fontWeight(.medium)
+                .foregroundColor(status ? .green : .orange)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .liquidGlassCapsule()
     }
 }
 
@@ -528,33 +640,6 @@ struct InstructionBlock: View {
     }
 }
 
-struct UsageStatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 14))
-                    .foregroundColor(color)
-                Text(title)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
-            }
-
-            Text(value)
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundColor(.primary)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color(nsColor: .windowBackgroundColor).opacity(0.5))
-        .cornerRadius(8)
-    }
-}
 
 struct APIKeyInputView: View {
     @Binding var apiKey: String
@@ -564,9 +649,10 @@ struct APIKeyInputView: View {
 
     var body: some View {
         VStack(spacing: 24) {
-            VStack(spacing: 8) {
+            // Icon with glass effect
+            VStack(spacing: 12) {
                 Image(systemName: "key.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundStyle(
                         LinearGradient(
                             colors: [.blue, .purple],
@@ -574,6 +660,8 @@ struct APIKeyInputView: View {
                             endPoint: .bottomTrailing
                         )
                     )
+                    .frame(width: 56, height: 56)
+                    .liquidGlassCircle(interactive: true)
 
                 Text("Configure OpenAI API Key")
                     .font(.headline)
@@ -585,6 +673,7 @@ struct APIKeyInputView: View {
                     .frame(maxWidth: 320)
             }
 
+            // Input section with glass container
             VStack(alignment: .leading, spacing: 8) {
                 Text("API Key")
                     .font(.caption)
@@ -607,6 +696,8 @@ struct APIKeyInputView: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.blue)
             }
+            .padding(16)
+            .liquidGlassRounded(cornerRadius: 12)
 
             HStack(spacing: 12) {
                 Button("Cancel") {
@@ -626,6 +717,17 @@ struct APIKeyInputView: View {
         }
         .padding(32)
         .frame(width: 450)
+        .background {
+            LinearGradient(
+                colors: [
+                    Color.blue.opacity(0.06),
+                    Color.purple.opacity(0.08)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+        }
     }
 }
 

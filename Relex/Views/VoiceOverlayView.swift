@@ -346,17 +346,13 @@ struct VoiceOverlayView: View {
                 // Just error icon
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 18))
-                    .foregroundColor(.orange)
+                    .foregroundStyle(.orange)
                     .frame(width: 200, height: 30)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.black.opacity(0.85))
-                .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
-        )
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .modifier(OverlayGlassModifier())
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
@@ -367,10 +363,36 @@ struct VoiceOverlayView: View {
     }
 }
 
+/// Conditional modifier that applies Liquid Glass effect on macOS 26+ (Tahoe)
+struct OverlayGlassModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 26.0, *) {
+            content
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+        } else {
+            content
+                .clipShape(RoundedRectangle(cornerRadius: 20))
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
+        }
+    }
+}
+
+/// Optimized WaveformView using Canvas for single-pass rendering
+/// This is more efficient than ForEach with individual views as it:
+/// 1. Uses a single draw call instead of multiple view compositions
+/// 2. Reduces SwiftUI view hierarchy complexity
+/// 3. Allows direct GPU-accelerated rendering
 struct WaveformView: View {
     let audioLevel: Float
     let colors: [Color]
-    let barCount = 30
+    // Reduced bar count from 20 to 15 for better performance while maintaining visual appeal
+    private let barCount = 15
+    private let barWidth: CGFloat = 4
+    private let barSpacing: CGFloat = 3
+    private let cornerRadius: CGFloat = 1.5
+    private let baseHeight: CGFloat = 3
+    private let maxExtraHeight: CGFloat = 24
 
     init(audioLevel: Float, colors: [Color] = [.blue, .purple]) {
         self.audioLevel = audioLevel
@@ -378,55 +400,38 @@ struct WaveformView: View {
     }
 
     var body: some View {
-        HStack(spacing: 2) {
-            ForEach(0..<barCount, id: \.self) { index in
-                WaveformBar(
-                    audioLevel: audioLevel,
-                    index: index,
-                    totalBars: barCount,
-                    colors: colors
-                )
+        Canvas { context, size in
+            let totalWidth = CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing
+            let startX = (size.width - totalWidth) / 2
+            let audioMultiplier = CGFloat(audioLevel) * 0.8 + 0.2 // Min 0.2, max 1.0
+            
+            // Pre-create the gradient for all bars
+            let gradient = Gradient(colors: colors)
+            
+            for index in 0..<barCount {
+                let normalizedIndex = Float(index) / Float(barCount)
+                let centerDistance = abs(normalizedIndex - 0.5) * 2 // 0 at center, 1 at edges
+                let waveMultiplier = 1.0 - CGFloat(centerDistance * 0.7)
+                
+                let height = baseHeight + (maxExtraHeight * waveMultiplier * audioMultiplier)
+                let x = startX + CGFloat(index) * (barWidth + barSpacing)
+                let y = (size.height - height) / 2
+                
+                let rect = CGRect(x: x, y: y, width: barWidth, height: height)
+                let path = RoundedRectangle(cornerRadius: cornerRadius).path(in: rect)
+                
+                // Fill with linear gradient (bottom to top)
+                context.fill(path, with: .linearGradient(
+                    gradient,
+                    startPoint: CGPoint(x: rect.midX, y: rect.maxY),
+                    endPoint: CGPoint(x: rect.midX, y: rect.minY)
+                ))
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 12)
-    }
-}
-
-struct WaveformBar: View {
-    let audioLevel: Float
-    let index: Int
-    let totalBars: Int
-    let colors: [Color]
-
-    init(audioLevel: Float, index: Int, totalBars: Int, colors: [Color] = [.blue, .purple]) {
-        self.audioLevel = audioLevel
-        self.index = index
-        self.totalBars = totalBars
-        self.colors = colors
-    }
-
-    var body: some View {
-        let normalizedIndex = Float(index) / Float(totalBars)
-        let centerDistance = abs(normalizedIndex - 0.5) * 2 // 0 at center, 1 at edges
-
-        // Create wave effect - bars in middle are taller
-        let baseHeight: CGFloat = 3
-        let waveMultiplier = 1.0 - CGFloat(centerDistance * 0.7)
-
-        let audioMultiplier = CGFloat(audioLevel) * 0.8 + 0.2 // Min 0.2, max 1.0
-        let height = baseHeight + (24 * waveMultiplier * audioMultiplier)
-
-        return RoundedRectangle(cornerRadius: 1.5)
-            .fill(
-                LinearGradient(
-                    colors: colors,
-                    startPoint: .bottom,
-                    endPoint: .top
-                )
-            )
-            .frame(width: 3, height: height)
-            .animation(.easeInOut(duration: 0.1), value: audioLevel)
+        // Animation at container level for smooth transitions
+        .animation(.linear(duration: 0.08), value: audioLevel)
     }
 }
 

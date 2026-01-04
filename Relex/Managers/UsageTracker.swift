@@ -89,6 +89,9 @@ class UsageTracker {
         saveTranscriptionUsage()
 
         print("💰 Tracked transcription usage: \(String(format: "%.1f", durationSeconds))s with \(model.rawValue) = $\(String(format: "%.4f", usage.cost))")
+
+        // Post notification for usage stats update
+        NotificationCenter.default.post(name: NSNotification.Name("UsageStatsUpdated"), object: nil)
     }
 
     func trackGPTUsage(promptTokens: Int, completionTokens: Int, model: GPTModel) {
@@ -98,6 +101,9 @@ class UsageTracker {
 
         let totalTokens = promptTokens + completionTokens
         print("💰 Tracked GPT usage: \(totalTokens) tokens with \(model.rawValue) = $\(String(format: "%.4f", usage.cost))")
+
+        // Post notification for usage stats update
+        NotificationCenter.default.post(name: NSNotification.Name("UsageStatsUpdated"), object: nil)
     }
 
     func getStatistics(since date: Date? = nil) -> UsageStatistics {
@@ -187,6 +193,9 @@ class UsageTracker {
         saveTranscriptionUsage()
         saveGPTUsage()
         print("🗑️ Usage history reset")
+
+        // Post notification for usage stats update
+        NotificationCenter.default.post(name: NSNotification.Name("UsageStatsUpdated"), object: nil)
     }
 
     private func loadUsage() {

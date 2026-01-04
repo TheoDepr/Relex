@@ -24,9 +24,7 @@ class VoiceOverlayWindowManager {
 
         // Close existing window if any
         overlayWindow?.close()
-
-        // Create the SwiftUI view
-        let contentView = VoiceOverlayView(viewModel: viewModel, audioManager: audioManager)
+        overlayWindow = nil
 
         // Get the main screen
         guard let screen = NSScreen.main else {
@@ -34,17 +32,14 @@ class VoiceOverlayWindowManager {
             return
         }
 
-        // Create the hosting view
-        let hostingView = NSHostingView(rootView: contentView)
-
-        // Size for the overlay (smaller for minimalistic design)
-        let overlayWidth: CGFloat = 224 // 200 + padding
-        let overlayHeight: CGFloat = 46 // 30 + padding
+        // Size for the overlay
+        let overlayWidth: CGFloat = 240
+        let overlayHeight: CGFloat = 56
 
         // Position window at top center of screen
         let screenRect = screen.visibleFrame
         let windowX = screenRect.midX - (overlayWidth / 2)
-        let windowY = screenRect.maxY - overlayHeight - 20 // 20px from top
+        let windowY = screenRect.maxY - overlayHeight - 24
 
         let windowFrame = NSRect(
             x: windowX,
@@ -53,28 +48,32 @@ class VoiceOverlayWindowManager {
             height: overlayHeight
         )
 
-        hostingView.frame = NSRect(x: 0, y: 0, width: overlayWidth, height: overlayHeight)
-
+        // Create window first with defer: true to avoid layout recursion
         let window = NSPanel(
             contentRect: windowFrame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
-            defer: false
+            defer: true
         )
 
         window.backgroundColor = .clear
         window.isOpaque = false
-        window.hasShadow = true
+        window.hasShadow = false
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary]
-        window.contentView = hostingView
         window.isMovableByWindowBackground = false
         window.ignoresMouseEvents = false
 
+        // Create and set content view after window configuration
+        let contentView = VoiceOverlayView(viewModel: viewModel, audioManager: audioManager)
+        let hostingView = NSHostingView(rootView: contentView)
+        window.contentView = hostingView
+
+        // Store reference before showing
+        overlayWindow = window
+
         // Make window appear
         window.orderFrontRegardless()
-
-        overlayWindow = window
 
         print("✅ Voice overlay window created and shown at (\(windowX), \(windowY))")
     }

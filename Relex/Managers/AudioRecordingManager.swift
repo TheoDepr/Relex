@@ -19,65 +19,58 @@ class AudioRecordingManager: NSObject, ObservableObject {
     @Published var lastError: String?
 
     private var audioRecorder: AVAudioRecorder?
-    private var audioLevelTimer: Timer?
+    private var audioLevelTimer: DispatchSourceTimer?
     private var recordingStartTime: Date?
-    private var durationTimer: Timer?
+    private var durationTimer: DispatchSourceTimer?
     private var recordingURL: URL?
 
     override init() {
         super.init()
-        checkMicrophonePermission()
-        setupPermissionMonitoring()
-    }
-
-    private func setupPermissionMonitoring() {
-        // Monitor when app becomes active to recheck permissions
+        
+        // Sync with shared PermissionMonitor
+        isMicrophoneGranted = PermissionMonitor.shared.isMicrophoneGranted
+        
+        // Observe permission changes from shared monitor
+        NotificationCenter.default.addObserver(
+            forName: .microphonePermissionGranted,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            MainActor.assumeIsolated {
+                self.isMicrophoneGranted = true
+            }
+        }
+        
+        // Also listen for general permission check updates
         NotificationCenter.default.addObserver(
             forName: NSApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
         ) { [weak self] _ in
             guard let self = self else { return }
-            Task { @MainActor in
-                self.checkMicrophonePermission()
-            }
-        }
-
-        // Also poll periodically in case the user grants permission while app is in foreground
-        Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            Task { @MainActor in
-                self.checkMicrophonePermission()
+            MainActor.assumeIsolated {
+                self.isMicrophoneGranted = PermissionMonitor.shared.isMicrophoneGranted
             }
         }
     }
 
     deinit {
+        // Clean up timers directly in deinit (nonisolated context)
+        audioLevelTimer?.cancel()
+        durationTimer?.cancel()
         NotificationCenter.default.removeObserver(self)
     }
 
+    /// Check and sync microphone permission status with shared PermissionMonitor
     func checkMicrophonePermission() {
-        switch AVCaptureDevice.authorizationStatus(for: .audio) {
-        case .authorized:
-            isMicrophoneGranted = true
-        case .notDetermined, .denied, .restricted:
-            isMicrophoneGranted = false
-        @unknown default:
-            isMicrophoneGranted = false
-        }
+        PermissionMonitor.shared.checkAllPermissions()
+        isMicrophoneGranted = PermissionMonitor.shared.isMicrophoneGranted
     }
 
+    /// Request microphone permission via shared PermissionMonitor
     func requestMicrophonePermission() {
-        AVCaptureDevice.requestAccess(for: .audio) { [weak self] granted in
-            Task { @MainActor [weak self] in
-                self?.isMicrophoneGranted = granted
-                if granted {
-                    print("✅ Microphone permission granted")
-                } else {
-                    print("❌ Microphone permission denied")
-                }
-            }
-        }
+        PermissionMonitor.shared.requestMicrophone()
     }
 
     func startRecording() -> URL? {
@@ -141,10 +134,11 @@ class AudioRecordingManager: NSObject, ObservableObject {
         recorder.stop()
         isRecording = false
 
-        // Stop timers
-        audioLevelTimer?.invalidate()
-        audioLevelTimer = nil
-        durationTimer?.invalidate()
+        // Stop audio level timer
+        stopAudioLevelTimer()
+        
+        // Stop duration timer
+        durationTimer?.cancel()
         durationTimer = nil
 
         // Note: No audio session cleanup needed on macOS
@@ -174,29 +168,60 @@ class AudioRecordingManager: NSObject, ObservableObject {
     }
 
     private func startAudioLevelMonitoring() {
-        audioLevelTimer = Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            Task { @MainActor [weak self] in
-                guard let self = self, let recorder = self.audioRecorder else { return }
-
-                recorder.updateMeters()
-                let averagePower = recorder.averagePower(forChannel: 0)
-
-                // Convert dB to 0.0-1.0 range (dB range is typically -60 to 0)
-                let normalizedLevel = max(0.0, min(1.0, (averagePower + 60) / 60))
-                self.audioLevel = normalizedLevel
-            }
+        // Use high-precision DispatchSourceTimer for audio level updates
+        // 60ms interval (~16.6 Hz) provides smooth visual feedback
+        // with threshold-based updates to reduce unnecessary SwiftUI refreshes
+        startAudioLevelTimer()
+    }
+    
+    private func startAudioLevelTimer() {
+        // Clean up any existing timer
+        stopAudioLevelTimer()
+        
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        // 60ms interval for smooth visual feedback (~16.6 Hz)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(60))
+        timer.setEventHandler { [weak self] in
+            self?.updateAudioLevel()
+        }
+        timer.resume()
+        audioLevelTimer = timer
+        print("✅ Audio level timer started")
+    }
+    
+    private func stopAudioLevelTimer() {
+        audioLevelTimer?.cancel()
+        audioLevelTimer = nil
+    }
+    
+    /// Updates audio level with threshold-based debouncing
+    private func updateAudioLevel() {
+        guard let recorder = audioRecorder else { return }
+        
+        recorder.updateMeters()
+        let averagePower = recorder.averagePower(forChannel: 0)
+        
+        // Convert dB to 0.0-1.0 range (dB range is typically -60 to 0)
+        let normalizedLevel = max(0.0, min(1.0, (averagePower + 60) / 60))
+        
+        // Only update if change is noticeable (> 2%) to reduce @Published updates
+        // This reduces unnecessary SwiftUI view updates
+        if abs(normalizedLevel - audioLevel) > 0.02 {
+            audioLevel = normalizedLevel
         }
     }
 
     private func startDurationTimer() {
-        durationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self else { return }
-            Task { @MainActor [weak self] in
-                guard let self = self, let startTime = self.recordingStartTime else { return }
-                self.recordingDuration = Date().timeIntervalSince(startTime)
-            }
+        // Use DispatchSourceTimer for better precision than Timer
+        // 200ms interval - duration display doesn't need 100ms precision
+        let timer = DispatchSource.makeTimerSource(queue: .main)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(200))
+        timer.setEventHandler { [weak self] in
+            guard let self = self, let startTime = self.recordingStartTime else { return }
+            self.recordingDuration = Date().timeIntervalSince(startTime)
         }
+        timer.resume()
+        durationTimer = timer
     }
 
     func cleanupRecording(at url: URL?) {
