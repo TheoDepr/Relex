@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-// MARK: - Liquid Glass View Modifier with Backward Compatibility
+// MARK: - Liquid Glass View Modifier with macOS Tahoe Fallback
 
 /// A view modifier that applies Liquid Glass on macOS 26+ with fallback for older versions
 struct LiquidGlassModifier<S: Shape>: ViewModifier {
@@ -22,7 +22,6 @@ struct LiquidGlassModifier<S: Shape>: ViewModifier {
                 content.glassEffect(.regular, in: shape)
             }
         } else {
-            // Fallback for older macOS versions
             content
                 .background(.ultraThinMaterial, in: shape)
                 .shadow(color: Color.black.opacity(0.08), radius: 8, y: 4)
@@ -60,6 +59,18 @@ struct ContentView: View {
     @State private var usageObserver: NSObjectProtocol?
 
     var body: some View {
+        Group {
+            if #available(macOS 26.0, *) {
+                GlassEffectContainer {
+                    contentBody
+                }
+            } else {
+                contentBody
+            }
+        }
+    }
+
+    private var contentBody: some View {
         ScrollView {
             VStack(spacing: 20) {
                 // Header with Liquid Glass

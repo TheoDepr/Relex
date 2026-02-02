@@ -369,7 +369,7 @@ struct OverlayGlassModifier: ViewModifier {
         if #available(macOS 26.0, *) {
             content
                 .clipShape(RoundedRectangle(cornerRadius: 20))
-                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 20))
+                .liquidGlassRounded(cornerRadius: 20)
         } else {
             content
                 .clipShape(RoundedRectangle(cornerRadius: 20))
